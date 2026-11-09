@@ -5,91 +5,324 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Расписание НПК</title>
     
-    <!-- PWA Манифест -->
     <link rel="manifest" href="manifest.json">
-    
-    <!-- Мета-теги для iOS (чтобы работало как приложение) -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Расписание">
     <link rel="apple-touch-icon" href="icon-192.png">
 
+    <!-- Подключаем JSZip для чтения Excel-файлов -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
     <style>
+        :root {
+            --bg: #1C1B1F; --text: #E6E1E5; --accent: #86D0FF; --surface: #2B2930;
+        }
         body {
-            margin: 0;
-            padding: 0;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: #1C1B1F;
-            color: #E6E1E5;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            text-align: center;
+            margin: 0; padding: 0; font-family: -apple-system, sans-serif;
+            background-color: var(--bg); color: var(--text);
+            display: flex; flex-direction: column; height: 100vh;
         }
-        .container {
-            padding: 20px;
-            max-width: 400px;
+        .header {
+            padding: 15px; background: var(--surface); display: flex;
+            justify-content: space-between; align-items: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
         }
-        .icon {
-            width: 120px;
-            height: 120px;
-            border-radius: 24px;
-            margin-bottom: 20px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+        .header h1 { margin: 0; font-size: 18px; }
+        .group-select {
+            background: var(--bg); color: var(--accent); border: 1px solid var(--accent);
+            padding: 8px; border-radius: 8px; font-weight: bold; max-width: 150px;
         }
-        h1 { font-size: 24px; margin-bottom: 10px; }
-        p { font-size: 16px; color: #B0B0B0; margin-bottom: 30px; line-height: 1.5; }
-        .btn {
-            display: inline-block;
-            background-color: #86D0FF;
-            color: #000;
-            text-decoration: none;
-            padding: 15px 30px;
-            border-radius: 12px;
-            font-weight: bold;
-            font-size: 16px;
-            transition: background 0.2s;
+        .content { flex: 1; overflow-y: auto; padding: 15px; }
+        .loader { text-align: center; margin-top: 50px; }
+        .lesson-card {
+            background: var(--surface); border-radius: 12px; padding: 15px;
+            margin-bottom: 10px; border-left: 4px solid var(--accent);
+            display: flex; flex-direction: column; gap: 5px;
         }
-        .btn:active { background-color: #6ab8e8; }
-        .ios-hint {
-            margin-top: 20px;
-            font-size: 13px;
-            color: #888;
-            border-top: 1px solid #333;
-            padding-top: 20px;
-        }
+        .lesson-time { font-size: 12px; color: var(--accent); font-weight: bold; }
+        .lesson-subject { font-size: 16px; font-weight: bold; }
+        .lesson-meta { font-size: 13px; color: #B0B0B0; }
+        .error { color: #FF5252; text-align: center; margin-top: 20px; }
+        
+        /* Скрываем подсказку для iOS по умолчанию */
+        .ios-hint { display: none; padding: 10px; text-align: center; font-size: 12px; color: #888; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <!-- Замените src на вашу картинку, если она есть -->
-        <img src="icon-192.png" alt="Иконка" class="icon" onerror="this.style.display='none'">
-        
-        <h1>Расписание НПК</h1>
-        <p>Для получения актуального расписания и скачивания полной версии перейдите в наш Telegram-канал.</p>
-        
-        <!-- Ссылка на ваш Telegram -->
-        <a href="https://t.me/KOLLEDG_APP" class="btn">Перейти в Telegram</a>
+    <div class="header">
+        <h1 id="day-title">Загрузка...</h1>
+        <select id="group-select" class="group-select" style="display:none;"></select>
+    </div>
 
-        <!-- Подсказка для iPhone -->
-        <div class="ios-hint" id="ios-hint" style="display: none;">
-            <b>Совет для iPhone:</b><br>
-            Чтобы добавить приложение на рабочий стол, нажмите кнопку «Поделиться» <b>⎋</b> в Safari и выберите <b>«На экран "Домой"»</b>.
-        </div>
+    <div class="content" id="content">
+        <div class="loader">⏳ Загрузка расписания...</div>
+    </div>
+
+    <div class="ios-hint" id="ios-hint">
+        <b>Совет:</b> Нажмите «Поделиться» ⎋ и выберите «На экран "Домой"»
     </div>
 
     <script>
-        // Регистрация Service Worker (для работы офлайн и установки)
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
+        // --- ССЫЛКИ ---
+        const SITE_URL = 'https://politech-nsk.ru/index.php/studentam';
+        const BASE_URL = 'https://politech-nsk.ru';
+        
+        let groupsList = [];
+        let currentDaySections = [];
+        let selectedGroupIndex = 0;
+
+        // Инициализация
+        document.addEventListener('DOMContentLoaded', () => {
+            if ('serviceWorker' in navigator) {
                 navigator.serviceWorker.register('sw.js');
+            }
+            if (/iPad|iPhone|iPod/.test(navigator.userAgent)) {
+                document.getElementById('ios-hint').style.display = 'block';
+            }
+            
+            // Восстанавливаем выбранную группу
+            const savedGroup = localStorage.getItem('selectedGroup');
+            if (savedGroup) selectedGroupIndex = parseInt(savedGroup);
+
+            fetchSchedule();
+        });
+
+        // Шаг 1: Получаем HTML страницу и ищем ссылку на последний Excel
+        async function fetchSchedule() {
+            try {
+                const response = await fetch(SITE_URL);
+                const html = await response.text();
+                
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                const links = Array.from(doc.querySelectorAll('a[href]'));
+                
+                // Ищем ссылку на Excel
+                let excelUrl = null;
+                for (let link of links) {
+                    const href = link.getAttribute('href');
+                    if (href && (href.toLowerCase().includes('.xlsx') || href.toLowerCase().includes('.xls'))) {
+                        // Берем первый попавшийся (обычно самый актуальный)
+                        excelUrl = href.startsWith('http') ? href : BASE_URL + href;
+                        break;
+                    }
+                }
+
+                if (!excelUrl) {
+                    showError("Не удалось найти файл расписания (.xlsx) на сайте.");
+                    return;
+                }
+
+                await downloadAndParseExcel(excelUrl);
+
+            } catch (e) {
+                console.error(e);
+                showError("Ошибка сети. Проверьте интернет.");
+            }
+        }
+
+        // Шаг 2: Скачиваем Excel и парсим его через JSZip
+        async function downloadAndParseExcel(url) {
+            try {
+                const response = await fetch(url);
+                const arrayBuffer = await response.arrayBuffer();
+                
+                const zip = await JSZip.loadAsync(arrayBuffer);
+                const sharedStringsFile = zip.file('xl/sharedStrings.xml');
+                const sheetFile = zip.file('xl/worksheets/sheet1.xml');
+
+                if (!sheetFile) throw new Error("Файл не является Excel-таблицей");
+
+                // Парсим строки
+                let sharedStrings = [];
+                if (sharedStringsFile) {
+                    const xml = await sharedStringsFile.async("string");
+                    const matches = xml.match(/<t[^>]*>(.*?)<\/t>/g) || [];
+                    sharedStrings = matches.map(m => m.replace(/<[^>]+>/g, ''));
+                }
+
+                // Парсим лист
+                const sheetXml = await sheetFile.async("string");
+                const rows = sheetXml.match(/<row[^>]*>(.*?)<\/row>/g) || [];
+                
+                parseExcelRows(rows, sharedStrings);
+
+            } catch (e) {
+                console.error(e);
+                showError("Ошибка при чтении файла Excel.");
+            }
+        }
+
+        // Шаг 3: Извлекаем данные (Ищем строку "Группа" и дни)
+        function parseExcelRows(rows, sharedStrings) {
+            let groupsRow = null;
+            let grid = {};
+
+            // Парсим все ячейки
+            rows.forEach((row, rIndex) => {
+                const cells = row.match(/<c[^>]*>.*?<\/c>/g) || [];
+                cells.forEach(cell => {
+                    const refMatch = cell.match(/r="([A-Z]+)\d+"/);
+                    const vMatch = cell.match(/<v>(.*?)<\/v>/);
+                    const tMatch = cell.match(/t="s"/);
+                    
+                    if (refMatch && vMatch) {
+                        const colLetter = refMatch[1];
+                        let val = vMatch[1];
+                        
+                        // Если это строка из sharedStrings
+                        if (tMatch && sharedStrings[parseInt(val)]) {
+                            val = sharedStrings[parseInt(val)];
+                        }
+                        
+                        if (!grid[rIndex]) grid[rIndex] = {};
+                        grid[rIndex][colLetter] = val.trim();
+                    }
+                });
+            });
+
+            // Ищем строку с группами
+            const maxRows = Math.max(...Object.keys(grid).map(Number));
+            for (let r = 0; r < maxRows; r++) {
+                if (grid[r]) {
+                    for (let col in grid[r]) {
+                        if (grid[r][col].includes("Группа")) {
+                            groupsRow = r;
+                            break;
+                        }
+                    }
+                }
+                if (groupsRow !== null) break;
+            }
+
+            if (groupsRow === null) {
+                showError("Не найдена строка с группами в файле.");
+                return;
+            }
+
+            // Собираем группы
+            groupsList = [];
+            const groupsData = grid[groupsRow];
+            for (let col in groupsData) {
+                if (groupsData[col] !== "Группа" && groupsData[col] !== "№" && groupsData[col].length > 0) {
+                    groupsList.push({ colLetter: col, name: groupsData[col] });
+                }
+            }
+
+            populateGroupSelector();
+            renderCurrentDay(grid, groupsRow);
+        }
+
+        function populateGroupSelector() {
+            const select = document.getElementById('group-select');
+            select.innerHTML = '';
+            groupsList.forEach((g, i) => {
+                const opt = document.createElement('option');
+                opt.value = i;
+                opt.textContent = g.name;
+                select.appendChild(opt);
+            });
+            select.value = selectedGroupIndex;
+            select.style.display = 'block';
+            
+            select.onchange = (e) => {
+                selectedGroupIndex = parseInt(e.target.value);
+                localStorage.setItem('selectedGroup', selectedGroupIndex);
+                // Перерисовываем (нам нужно заново найти данные, но для простоты просто перезагрузим страницу)
+                // В идеале нужно кэшировать grid, но для простоты PWA мы просто запрашиваем файл снова
+                // (файл берется из кэша браузера, так что это быстро).
+                location.reload(); 
+            };
+        }
+
+        // Шаг 4: Фильтруем пары для сегодня и выводим
+        function renderCurrentDay(grid, groupsRow) {
+            const groupCol = groupsList[selectedGroupIndex].colLetter;
+            const maxRows = Math.max(...Object.keys(grid).map(Number));
+            
+            const days = ["ВОСКРЕСЕНЬЕ", "ПОНЕДЕЛЬНИК", "ВТОРНИК", "СРЕДА", "ЧЕТВЕРГ", "ПЯТНИЦА", "СУББОТА"];
+            const todayName = days[new Date().getDay()];
+            
+            let currentDay = null;
+            let lessons = [];
+
+            // Упрощенный парсер на основе дней
+            for (let r = groupsRow + 1; r < maxRows; r++) {
+                if (!grid[r]) continue;
+                
+                // Проверяем, не является ли эта строка названием дня
+                for (let c = 0; c < 5; c++) { // Смотрим первые 5 колонок
+                    const val = grid[r][Object.keys(grid[r])[c]] || "";
+                    const upperVal = val.toUpperCase();
+                    
+                    if (days.some(d => upperVal.includes(d))) {
+                        if (currentDay === todayName) break; // Если мы уже собрали для сегодня, выходим
+                        currentDay = days.find(d => upperVal.includes(d));
+                        lessons = []; // Сбрасываем пары для нового дня
+                        break;
+                    }
+                }
+
+                if (currentDay !== todayName) continue; // Нам нужен только сегодняшний день
+
+                // Ищем время
+                let time = "";
+                for (let col in grid[r]) {
+                    if (grid[r][col].match(/\d{1,2}:\d{2}\s*[-–—]\s*\d{1,2}:\d{2}/)) {
+                        time = grid[r][col];
+                        break;
+                    }
+                }
+
+                if (time) {
+                    // Ищем предмет
+                    let subject = grid[r][groupCol] || "";
+                    
+                    // Если предмета нет в нужной колонке, возможно, он смещен или объединен
+                    if (!subject || subject === "—") {
+                        for (let col in grid[r]) {
+                            if (col !== groupCol && grid[r][col].length > 3 && !grid[r][col].match(/^\d+$/) && !grid[r][col].includes(":")) {
+                                subject = grid[r][col];
+                                break;
+                            }
+                        }
+                    }
+
+                    if (subject && subject.length > 1) {
+                        lessons.push({ time, subject });
+                    }
+                }
+            }
+
+            renderLessons(todayName, lessons);
+        }
+
+        function renderLessons(dayName, lessons) {
+            const content = document.getElementById('content');
+            const title = document.getElementById('day-title');
+            
+            title.textContent = "Сегодня: " + dayName;
+            
+            if (lessons.length === 0) {
+                content.innerHTML = '<div class="loader">🎉 На сегодня пар нет!</div>';
+                return;
+            }
+
+            content.innerHTML = '';
+            lessons.forEach(l => {
+                const card = document.createElement('div');
+                card.className = 'lesson-card';
+                card.innerHTML = `
+                    <div class="lesson-time">${l.time}</div>
+                    <div class="lesson-subject">${l.subject}</div>
+                `;
+                content.appendChild(card);
             });
         }
 
-        // Показываем подсказку только на iOS
-        if (/iPad|iPhone|iPod/.test(navigator.userAgent)) {
-            document.getElementById('ios-hint').style.display = 'block';
+        function showError(msg) {
+            document.getElementById('content').innerHTML = `<div class="error">${msg}</div>`;
         }
     </script>
 </body>
