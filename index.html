@@ -11,32 +11,79 @@
     <meta name="apple-mobile-web-app-title" content="Расписание">
     <link rel="apple-touch-icon" href="icon-192.png">
 
-    <!-- JSZip для чтения Excel-файлов -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
     <style>
-        :root { --bg: #1C1B1F; --text: #E6E1E5; --accent: #86D0FF; --surface: #2B2930; }
-        body { margin: 0; padding: 0; font-family: -apple-system, sans-serif; background-color: var(--bg); color: var(--text); display: flex; flex-direction: column; height: 100vh; }
-        .header { padding: 15px; background: var(--surface); display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 10px rgba(0,0,0,0.3); }
-        .header h1 { margin: 0; font-size: 18px; }
-        .group-select { background: var(--bg); color: var(--accent); border: 1px solid var(--accent); padding: 8px; border-radius: 8px; font-weight: bold; max-width: 150px; }
-        .content { flex: 1; overflow-y: auto; padding: 15px; }
-        .loader { text-align: center; margin-top: 50px; }
-        .lesson-card { background: var(--surface); border-radius: 12px; padding: 15px; margin-bottom: 10px; border-left: 4px solid var(--accent); display: flex; flex-direction: column; gap: 5px; }
-        .lesson-time { font-size: 12px; color: var(--accent); font-weight: bold; }
-        .lesson-subject { font-size: 16px; font-weight: bold; }
-        .error { color: #FF5252; text-align: center; margin-top: 20px; }
-        .ios-hint { display: none; padding: 10px; text-align: center; font-size: 12px; color: #888; }
+        :root { 
+            --bg: #121212; 
+            --surface: #1E1E1E; 
+            --text: #E6E1E5; 
+            --text-muted: #A0A0A0;
+            --accent: #86D0FF; 
+            --border: #333333;
+        }
+        body { 
+            margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+            background-color: var(--bg); color: var(--text); 
+            display: flex; flex-direction: column; height: 100vh; 
+        }
+        
+        /* Шапка */
+        .header { 
+            padding: 15px 20px; background: var(--surface); 
+            display: flex; flex-direction: column; gap: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            z-index: 10;
+        }
+        .header-top { display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { margin: 0; font-size: 20px; font-weight: 600; }
+        
+        .group-select { 
+            width: 100%; box-sizing: border-box;
+            background: var(--bg); color: var(--accent); border: 1px solid var(--border);
+            padding: 12px 15px; border-radius: 10px; font-size: 16px; font-weight: 500;
+            outline: none; appearance: none;
+        }
+        
+        /* Контент */
+        .content { flex: 1; overflow-y: auto; padding: 20px; }
+        .loader { text-align: center; margin-top: 50px; color: var(--accent); font-size: 16px; }
+        
+        /* Карточки пар */
+        .day-title { font-size: 14px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 15px; font-weight: bold; }
+        .lesson-card { 
+            background: var(--surface); border-radius: 14px; padding: 16px; 
+            margin-bottom: 12px; display: flex; gap: 15px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            border-left: 4px solid var(--border);
+            transition: border-color 0.3s;
+        }
+        .lesson-card.active { border-left-color: var(--accent); }
+        
+        .lesson-time-block { display: flex; flex-direction: column; min-width: 60px; justify-content: center; }
+        .lesson-num { font-size: 20px; font-weight: 800; color: var(--accent); line-height: 1; }
+        .lesson-time { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+        
+        .lesson-info { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+        .lesson-subject { font-size: 16px; font-weight: 600; margin-bottom: 4px; line-height: 1.3; }
+        .lesson-meta { font-size: 13px; color: var(--text-muted); display: flex; flex-wrap: wrap; gap: 8px; }
+        .room-badge { background: rgba(134, 208, 255, 0.15); color: var(--accent); padding: 2px 6px; border-radius: 4px; font-weight: bold; }
+        
+        .error { color: #FF5252; text-align: center; margin-top: 20px; background: rgba(255, 82, 82, 0.1); padding: 15px; border-radius: 10px; }
+        .ios-hint { display: none; padding: 10px; text-align: center; font-size: 12px; color: var(--text-muted); border-top: 1px solid var(--border); background: var(--surface); }
     </style>
 </head>
 <body>
     <div class="header">
-        <h1 id="day-title">Загрузка...</h1>
+        <div class="header-top">
+            <h1>Расписание НПК</h1>
+            <span id="day-title" style="font-size: 14px; color: var(--text-muted);">Загрузка...</span>
+        </div>
         <select id="group-select" class="group-select" style="display:none;"></select>
     </div>
 
     <div class="content" id="content">
-        <div class="loader">⏳ Загрузка расписания...</div>
+        <div class="loader">⏳ Скачиваем и обрабатываем расписание...</div>
     </div>
 
     <div class="ios-hint" id="ios-hint">
@@ -50,16 +97,13 @@
         
         let groupsList = [];
         let selectedGroupIndex = 0;
-        let cachedGrid = null;
-        let cachedGroupsRow = null;
+        let grid = {}; // Храним всю таблицу
+        let maxRow = 0;
+        let groupsRow = 0;
 
         document.addEventListener('DOMContentLoaded', () => {
-            if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.register('sw.js');
-            }
-            if (/iPad|iPhone|iPod/.test(navigator.userAgent)) {
-                document.getElementById('ios-hint').style.display = 'block';
-            }
+            if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+            if (/iPad|iPhone|iPod/.test(navigator.userAgent)) document.getElementById('ios-hint').style.display = 'block';
             
             const savedGroup = localStorage.getItem('selectedGroup');
             if (savedGroup) selectedGroupIndex = parseInt(savedGroup);
@@ -69,9 +113,9 @@
 
         async function loadSchedule() {
             try {
-                // Загружаем HTML страницу через прокси
-                const proxyUrl = PROXY + encodeURIComponent(SITE_URL);
-                const response = await fetch(proxyUrl);
+                // Загружаем HTML страницу
+                const response = await fetch(PROXY + encodeURIComponent(SITE_URL));
+                if (!response.ok) throw new Error("Ошибка сети");
                 const html = await response.text();
                 
                 const parser = new DOMParser();
@@ -87,17 +131,13 @@
                     }
                 }
 
-                if (!excelUrl) {
-                    showError("Не удалось найти файл расписания (.xlsx) на сайте.");
-                    return;
-                }
-
+                if (!excelUrl) throw new Error("Файл Excel не найден на сайте.");
                 await downloadExcel(excelUrl);
 
             } catch (e) {
                 console.error(e);
                 if (localStorage.getItem('cachedExcelData')) {
-                    document.getElementById('content').innerHTML = '<div class="loader">📶 Нет сети. Загружаем сохраненное расписание...</div>';
+                    document.getElementById('content').innerHTML = '<div class="loader">📶 Нет сети. Загружаем кэш...</div>';
                     parseExcelFromBase64(localStorage.getItem('cachedExcelData'));
                 } else {
                     showError("Ошибка сети. Проверьте интернет.");
@@ -107,26 +147,19 @@
 
         async function downloadExcel(url) {
             try {
-                // Скачиваем Excel через прокси
-                const proxyUrl = PROXY + encodeURIComponent(url);
-                const response = await fetch(proxyUrl);
+                const response = await fetch(PROXY + encodeURIComponent(url));
                 if (!response.ok) throw new Error("Ошибка прокси");
-                
                 const arrayBuffer = await response.arrayBuffer();
                 
-                // Сохраняем в память для офлайн-режима
                 const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
                 localStorage.setItem('cachedExcelData', base64);
 
                 await parseExcel(arrayBuffer);
-
             } catch (e) {
-                console.error("Ошибка скачивания Excel:", e);
                 if (localStorage.getItem('cachedExcelData')) {
-                    document.getElementById('content').innerHTML = '<div class="loader">📶 Ошибка сети. Загружаем сохраненное расписание...</div>';
                     parseExcelFromBase64(localStorage.getItem('cachedExcelData'));
                 } else {
-                    showError("Ошибка при скачивании файла. Попробуйте позже.");
+                    showError("Ошибка при чтении файла. Попробуйте позже.");
                 }
             }
         }
@@ -143,8 +176,7 @@
                 const zip = await JSZip.loadAsync(arrayBuffer);
                 const sharedStringsFile = zip.file('xl/sharedStrings.xml');
                 const sheetFile = zip.file('xl/worksheets/sheet1.xml');
-
-                if (!sheetFile) throw new Error("Файл не является Excel-таблицей");
+                if (!sheetFile) throw new Error("Не Excel");
 
                 let sharedStrings = [];
                 if (sharedStringsFile) {
@@ -154,62 +186,66 @@
                 }
 
                 const sheetXml = await sheetFile.async("string");
+                // Разбиваем на строки
                 const rows = sheetXml.match(/<row[^>]*>(.*?)<\/row>/g) || [];
                 
-                processRows(rows, sharedStrings);
+                // Заполняем глобальный grid
+                grid = {};
+                maxRow = rows.length;
+                
+                rows.forEach((row, rIndex) => {
+                    const cells = row.match(/<c[^>]*>.*?<\/c>/g) || [];
+                    cells.forEach(cell => {
+                        const refMatch = cell.match(/r="([A-Z]+)\d+"/);
+                        const vMatch = cell.match(/<v>(.*?)<\/v>/);
+                        const tMatch = cell.match(/t="s"/);
+                        
+                        if (refMatch && vMatch) {
+                            const colLetter = refMatch[1];
+                            let val = vMatch[1];
+                            if (tMatch && sharedStrings[parseInt(val)]) val = sharedStrings[parseInt(val)];
+                            
+                            if (!grid[rIndex]) grid[rIndex] = {};
+                            grid[rIndex][colLetter] = val.trim();
+                        }
+                    });
+                });
+
+                // Ищем строку с группами
+                groupsRow = -1;
+                for (let r = 0; r < maxRow; r++) {
+                    if (grid[r]) {
+                        for (let col in grid[r]) {
+                            if (grid[r][col].toUpperCase().includes("ГРУППА")) { groupsRow = r; break; }
+                        }
+                    }
+                    if (groupsRow !== -1) break;
+                }
+
+                if (groupsRow === -1) throw new Error("Не найдена строка с группами");
+
+                // Собираем ВСЕ группы (сканируем строку с группами и строку под ней)
+                groupsList = [];
+                for (let r = groupsRow; r <= groupsRow + 1; r++) {
+                    if (!grid[r]) continue;
+                    for (let col in grid[r]) {
+                        let val = grid[r][col];
+                        if (val && val !== "Группа" && val !== "№" && val.length > 1 && !val.includes("курс")) {
+                            // Проверяем, чтобы не дублировалось
+                            if (!groupsList.some(g => g.name === val)) {
+                                groupsList.push({ colLetter: col, name: val });
+                            }
+                        }
+                    }
+                }
+
+                populateGroupSelector();
+                renderCurrentDay();
 
             } catch (e) {
                 console.error(e);
-                showError("Ошибка при чтении файла Excel.");
+                showError("Ошибка формата Excel файла.");
             }
-        }
-
-        function processRows(rows, sharedStrings) {
-            let groupsRow = null;
-            let grid = {};
-
-            rows.forEach((row, rIndex) => {
-                const cells = row.match(/<c[^>]*>.*?<\/c>/g) || [];
-                cells.forEach(cell => {
-                    const refMatch = cell.match(/r="([A-Z]+)\d+"/);
-                    const vMatch = cell.match(/<v>(.*?)<\/v>/);
-                    const tMatch = cell.match(/t="s"/);
-                    
-                    if (refMatch && vMatch) {
-                        const colLetter = refMatch[1];
-                        let val = vMatch[1];
-                        if (tMatch && sharedStrings[parseInt(val)]) val = sharedStrings[parseInt(val)];
-                        if (!grid[rIndex]) grid[rIndex] = {};
-                        grid[rIndex][colLetter] = val.trim();
-                    }
-                });
-            });
-
-            const maxRows = Math.max(...Object.keys(grid).map(Number));
-            for (let r = 0; r < maxRows; r++) {
-                if (grid[r]) {
-                    for (let col in grid[r]) {
-                        if (grid[r][col].includes("Группа")) { groupsRow = r; break; }
-                    }
-                }
-                if (groupsRow !== null) break;
-            }
-
-            if (groupsRow === null) { showError("Не найдена строка с группами."); return; }
-
-            groupsList = [];
-            const groupsData = grid[groupsRow];
-            for (let col in groupsData) {
-                if (groupsData[col] !== "Группа" && groupsData[col] !== "№" && groupsData[col].length > 0) {
-                    groupsList.push({ colLetter: col, name: groupsData[col] });
-                }
-            }
-
-            cachedGrid = grid;
-            cachedGroupsRow = groupsRow;
-
-            populateGroupSelector();
-            renderCurrentDay();
         }
 
         function populateGroupSelector() {
@@ -233,74 +269,105 @@
         }
 
         function renderCurrentDay() {
-            if (!cachedGrid) return;
+            if (!grid || groupsList.length === 0) return;
 
+            const groupName = groupsList[selectedGroupIndex].name;
             const groupCol = groupsList[selectedGroupIndex].colLetter;
-            const maxRows = Math.max(...Object.keys(cachedGrid).map(Number));
             
             const days = ["ВОСКРЕСЕНЬЕ", "ПОНЕДЕЛЬНИК", "ВТОРНИК", "СРЕДА", "ЧЕТВЕРГ", "ПЯТНИЦА", "СУББОТА"];
             const todayName = days[new Date().getDay()];
-            
+            document.getElementById('day-title').textContent = todayName;
+
             let currentDay = null;
             let lessons = [];
 
-            for (let r = cachedGroupsRow + 1; r < maxRows; r++) {
-                if (!cachedGrid[r]) continue;
+            // Идем по строкам после групп
+            for (let r = groupsRow + 2; r < maxRow; r++) {
+                if (!grid[r]) continue;
                 
-                for (let c = 0; c < 5; c++) {
-                    const val = cachedGrid[r][Object.keys(cachedGrid[r])[c]] || "";
-                    const upperVal = val.toUpperCase();
-                    
-                    if (days.some(d => upperVal.includes(d))) {
-                        if (currentDay === todayName) break;
-                        currentDay = days.find(d => upperVal.includes(d));
-                        lessons = [];
-                        break;
-                    }
+                // Проверяем, не является ли строка названием дня
+                let rowString = Object.values(grid[r]).join(" ").toUpperCase();
+                let foundDay = days.find(d => rowString.includes(d));
+                
+                if (foundDay) {
+                    if (currentDay === todayName) break; // Если мы уже собрали для сегодня, выходим
+                    currentDay = foundDay;
+                    lessons = [];
+                    continue;
                 }
 
                 if (currentDay !== todayName) continue;
 
+                // Ищем время пары (обычно в колонке B или C)
                 let time = "";
-                for (let col in cachedGrid[r]) {
-                    if (cachedGrid[r][col].match(/\d{1,2}:\d{2}\s*[-–—]\s*\d{1,2}:\d{2}/)) {
-                        time = cachedGrid[r][col];
-                        break;
-                    }
+                let lessonNum = "";
+                for (let col in grid[r]) {
+                    let val = grid[r][col];
+                    if (val.match(/\d{1,2}:\d{2}\s*[-–—]\s*\d{1,2}:\d{2}/)) time = val;
+                    if (val.match(/^\d{1,2}$/)) lessonNum = val;
                 }
 
+                // Если есть время, значит это пара
                 if (time) {
-                    let subject = cachedGrid[r][groupCol] || "";
+                    let subject = grid[r][groupCol] || "";
+                    let teacher = "";
+                    let room = "";
+
+                    // Умный поиск: если в колонке группы пусто, ищем предмет в соседних колонках
                     if (!subject || subject === "—") {
-                        for (let col in cachedGrid[r]) {
-                            if (col !== groupCol && cachedGrid[r][col].length > 3 && !cachedGrid[r][col].match(/^\d+$/) && !cachedGrid[r][col].includes(":")) {
-                                subject = cachedGrid[r][col];
+                        for (let col in grid[r]) {
+                            let val = grid[r][col];
+                            if (val && val.length > 3 && !val.match(/^\d+$/) && !val.includes(":") && !val.includes(groupName)) {
+                                subject = val;
                                 break;
                             }
                         }
                     }
-                    if (subject && subject.length > 1) lessons.push({ time, subject });
+
+                    // Пытаемся найти преподавателя и кабинет (по регуляркам)
+                    for (let col in grid[r]) {
+                        let val = grid[r][col];
+                        if (val === subject || val === time || val === lessonNum) continue;
+                        if (val.match(/^[А-ЯЁ][а-яё]+\s[А-ЯЁ]\.[А-ЯЁ]\./)) teacher = val; // Фамилия И.О.
+                        if (val.match(/^\d{1,3}[а-яА-Я]?$/)) room = val; // Просто цифра (кабинет)
+                    }
+
+                    if (subject && subject.length > 1) {
+                        lessons.push({ num: lessonNum, time, subject, teacher, room });
+                    }
                 }
             }
 
-            renderLessons(todayName, lessons);
+            renderLessons(lessons);
         }
 
-        function renderLessons(dayName, lessons) {
+        function renderLessons(lessons) {
             const content = document.getElementById('content');
-            const title = document.getElementById('day-title');
-            title.textContent = "Сегодня: " + dayName;
             
             if (lessons.length === 0) {
                 content.innerHTML = '<div class="loader">🎉 На сегодня пар нет!</div>';
                 return;
             }
 
-            content.innerHTML = '';
+            content.innerHTML = '<div class="day-title">Пары на сегодня</div>';
             lessons.forEach(l => {
                 const card = document.createElement('div');
                 card.className = 'lesson-card';
-                card.innerHTML = `<div class="lesson-time">${l.time}</div><div class="lesson-subject">${l.subject}</div>`;
+                
+                let metaHtml = '';
+                if (l.teacher) metaHtml += `<span>${l.teacher}</span>`;
+                if (l.room) metaHtml += `<span class="room-badge">ауд. ${l.room}</span>`;
+
+                card.innerHTML = `
+                    <div class="lesson-time-block">
+                        <div class="lesson-num">${l.num || '•'}</div>
+                        <div class="lesson-time">${l.time.split('-')[0].trim()}</div>
+                    </div>
+                    <div class="lesson-info">
+                        <div class="lesson-subject">${l.subject}</div>
+                        <div class="lesson-meta">${metaHtml}</div>
+                    </div>
+                `;
                 content.appendChild(card);
             });
         }
