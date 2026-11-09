@@ -11,6 +11,7 @@
     <meta name="apple-mobile-web-app-title" content="Расписание">
     <link rel="apple-touch-icon" href="icon-192.png">
 
+    <!-- JSZip для чтения Excel-файлов -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
     <style>
@@ -45,10 +46,11 @@
     <script>
         const SITE_URL = 'https://politech-nsk.ru/index.php/studentam';
         const BASE_URL = 'https://politech-nsk.ru';
+        const PROXY = 'https://api.codetabs.com/v1/proxy?quest=';
         
         let groupsList = [];
         let selectedGroupIndex = 0;
-        let cachedGrid = null; // Кэш таблицы
+        let cachedGrid = null;
         let cachedGroupsRow = null;
 
         document.addEventListener('DOMContentLoaded', () => {
@@ -65,14 +67,12 @@
             loadSchedule();
         });
 
-        // Загрузка страницы и поиск ссылки на Excel
         async function loadSchedule() {
             try {
-                // Используем прокси только для получения HTML страницы
-                const proxyUrl = 'https://api.allorigins.win/get?url=' + encodeURIComponent(SITE_URL);
+                // Загружаем HTML страницу через прокси
+                const proxyUrl = PROXY + encodeURIComponent(SITE_URL);
                 const response = await fetch(proxyUrl);
-                const data = await response.json();
-                const html = data.contents;
+                const html = await response.text();
                 
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(html, 'text/html');
@@ -96,7 +96,6 @@
 
             } catch (e) {
                 console.error(e);
-                // Если сеть упала, но есть кэш - показываем кэш
                 if (localStorage.getItem('cachedExcelData')) {
                     document.getElementById('content').innerHTML = '<div class="loader">📶 Нет сети. Загружаем сохраненное расписание...</div>';
                     parseExcelFromBase64(localStorage.getItem('cachedExcelData'));
@@ -106,15 +105,16 @@
             }
         }
 
-        // Скачивание Excel через fetch с типом blob (обход CORS)
         async function downloadExcel(url) {
             try {
-                const response = await fetch(url, { mode: 'cors' });
-                if (!response.ok) throw new Error("Network response was not ok");
+                // Скачиваем Excel через прокси
+                const proxyUrl = PROXY + encodeURIComponent(url);
+                const response = await fetch(proxyUrl);
+                if (!response.ok) throw new Error("Ошибка прокси");
                 
                 const arrayBuffer = await response.arrayBuffer();
                 
-                // Конвертируем в Base64 для сохранения в localStorage
+                // Сохраняем в память для офлайн-режима
                 const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
                 localStorage.setItem('cachedExcelData', base64);
 
@@ -122,22 +122,11 @@
 
             } catch (e) {
                 console.error("Ошибка скачивания Excel:", e);
-                // Пробуем альтернативный прокси, если основной упал
-                try {
-                    const fallbackUrl = 'https://corsproxy.io/?' + encodeURIComponent(url);
-                    const response = await fetch(fallbackUrl);
-                    const arrayBuffer = await response.arrayBuffer();
-                    await parseExcel(arrayBuffer);
-                } catch (e2) {
-                    if (localStorage.getItem('cachedExcelData')) {
-                        document.getElementById('content').innerHTML = '<div class="loader">📶 Ошибка сети. Загружаем сохраненное расписание...</div>';
-                        const binaryString = atob(localStorage.getItem('cachedExcelData'));
-                        const bytes = new Uint8Array(binaryString.length);
-                        for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
-                        await parseExcel(bytes.buffer);
-                    } else {
-                        showError("Ошибка при скачивании файла. Попробуйте позже.");
-                    }
+                if (localStorage.getItem('cachedExcelData')) {
+                    document.getElementById('content').innerHTML = '<div class="loader">📶 Ошибка сети. Загружаем сохраненное расписание...</div>';
+                    parseExcelFromBase64(localStorage.getItem('cachedExcelData'));
+                } else {
+                    showError("Ошибка при скачивании файла. Попробуйте позже.");
                 }
             }
         }
@@ -149,7 +138,6 @@
             parseExcel(bytes.buffer);
         }
 
-        // Парсинг Excel
         async function parseExcel(arrayBuffer) {
             try {
                 const zip = await JSZip.loadAsync(arrayBuffer);
@@ -176,7 +164,6 @@
             }
         }
 
-        // Обработка строк
         function processRows(rows, sharedStrings) {
             let groupsRow = null;
             let grid = {};
@@ -241,11 +228,10 @@
             select.onchange = (e) => {
                 selectedGroupIndex = parseInt(e.target.value);
                 localStorage.setItem('selectedGroup', selectedGroupIndex);
-                renderCurrentDay(); // Перерисовываем без перезагрузки страницы
+                renderCurrentDay(); 
             };
         }
 
-        // Рендер расписания
         function renderCurrentDay() {
             if (!cachedGrid) return;
 
