@@ -1,6 +1,6 @@
-const SITE_URL = 'politech-nsk.ru/index.php/studentam';
-const BASE_URL = 'politech-nsk.ru';
-const PROXY = 'schedule-proxy.ivanushca99.workers.dev/?url=';
+const SITE_URL = 'https://' + 'politech-nsk.ru/index.php/studentam';
+const BASE_URL = 'https://' + 'politech-nsk.ru';
+const PROXY = 'https://' + 'schedule-proxy.ivanushca99.workers.dev/?url=';
 
 let groupsDatabase = {}; 
 let groupsList = [];
