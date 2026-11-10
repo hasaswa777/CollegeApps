@@ -11,14 +11,10 @@
     <meta name="apple-mobile-web-app-title" content="Расписание">
     <link rel="apple-touch-icon" href="icon-192.png">
 
-    <!-- Подключаем SheetJS для правильного чтения Excel -->
     <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
 
     <style>
-        :root { 
-            --bg: #121212; --surface: #1E1E1E; --text: #E6E1E5; 
-            --text-muted: #A0A0A0; --accent: #86D0FF; --border: #333333;
-        }
+        :root { --bg: #121212; --surface: #1E1E1E; --text: #E6E1E5; --text-muted: #A0A0A0; --accent: #86D0FF; --border: #333333; }
         body { margin: 0; padding: 0; font-family: -apple-system, sans-serif; background-color: var(--bg); color: var(--text); display: flex; flex-direction: column; height: 100vh; }
         .header { padding: 15px 20px; background: var(--surface); display: flex; flex-direction: column; gap: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); z-index: 10; }
         .header-top { display: flex; justify-content: space-between; align-items: center; }
@@ -61,7 +57,8 @@
         const BASE_URL = 'https://politech-nsk.ru';
         const PROXY = 'https://schedule-proxy.ivanushca99.workers.dev/?url=';
         
-        let workbook = null;
+        let rawData = [];
+        let merges = [];
         let groupsList = [];
         let selectedGroupIndex = 0;
 
@@ -128,37 +125,41 @@
             parseExcelData(bytes.buffer);
         }
 
-        // --- ГЛАВНОЕ ИЗМЕНЕНИЕ: Использование SheetJS ---
         function parseExcelData(arrayBuffer) {
             try {
-                // Читаем файл через библиотеку
-                workbook = XLSX.read(arrayBuffer, { type: 'array' });
-                const sheetName = workbook.SheetNames[0];
-                const worksheet = workbook.Sheets[sheetName];
+                const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+                const worksheet = workbook.Sheets[workbook.SheetNames[0]];
                 
-                // Получаем все данные в виде массива массивов (AOA)
-                const rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
+                rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
+                merges = worksheet['!merges'] || [];
                 
-                // Ищем все возможные названия групп во всем документе
+                // Собираем группы
                 groupsList = [];
                 rawData.forEach((row, rowIndex) => {
                     row.forEach((cell, colIndex) => {
                         if (typeof cell === 'string' && cell.trim().length > 2) {
-                            // Паттерн: 3 цифры (курс) + пробел + 2-4 буквы (специальность)
-                            // Например: 124 ИСП, 216 ПКС
-                            if (/^\d{3}\s+[А-ЯЁA-Z]{2,4}/.test(cell.trim()) || cell.trim().includes("Группа")) {
-                                if (cell.trim() !== "Группа" && !groupsList.some(g => g.name === cell.trim())) {
-                                    groupsList.push({ name: cell.trim(), colIndex: colIndex, rowIndex: rowIndex });
+                            // Паттерн: 3 цифры (курс) + пробел + 2-4 буквы
+                            if (/^\d{3}\s+[А-ЯЁA-Z]{2,4}/.test(cell.trim())) {
+                                if (!groupsList.some(g => g.name === cell.trim())) {
+                                    groupsList.push({ 
+                                        name: cell.trim(), 
+                                        colIndex: colIndex, 
+                                        rowIndex: rowIndex,
+                                        course: parseInt(cell.trim()[0]) 
+                                    });
                                 }
                             }
                         }
                     });
                 });
 
+                // Сортируем по курсу, затем по алфавиту
+                groupsList.sort((a, b) => a.course - b.course || a.name.localeCompare(b.name));
+
                 if (groupsList.length === 0) throw new Error("Группы не найдены");
                 
-                populateGroupSelector(rawData);
-                renderSchedule(rawData);
+                populateGroupSelector();
+                renderSchedule();
 
             } catch (e) {
                 console.error(e);
@@ -166,15 +167,43 @@
             }
         }
 
-        function populateGroupSelector(rawData) {
+        // Функция для получения значения ячейки с учетом объединений
+        function getCellValue(r, c) {
+            let val = rawData[r] && rawData[r][c] ? String(rawData[r][c]).trim() : "";
+            if (val !== "") return val;
+            
+            // Если пусто, проверяем, не попадает ли эта ячейка в объединенную область
+            for (let merge of merges) {
+                if (r >= merge.s.r && r <= merge.e.r && c >= merge.s.c && c <= merge.e.c) {
+                    let mergeVal = rawData[merge.s.r] && rawData[merge.s.r][merge.s.c] ? String(rawData[merge.s.r][merge.s.c]).trim() : "";
+                    if (mergeVal !== "") return mergeVal;
+                }
+            }
+            return "";
+        }
+
+        function populateGroupSelector() {
             const select = document.getElementById('group-select');
             select.innerHTML = '';
+            
+            let currentCourse = -1;
+            let optgroup = null;
+
             groupsList.forEach((g, i) => {
+                if (g.course !== currentCourse) {
+                    currentCourse = g.course;
+                    optgroup = document.createElement('optgroup');
+                    // Если курс 0, пишем "Подготовительное" или "0 курс"
+                    optgroup.label = currentCourse === 0 ? "Подготовительное отделение" : `${currentCourse} курс`;
+                    select.appendChild(optgroup);
+                }
+                
                 const opt = document.createElement('option');
                 opt.value = i;
                 opt.textContent = g.name;
-                select.appendChild(opt);
+                optgroup.appendChild(opt);
             });
+
             if (selectedGroupIndex >= groupsList.length) selectedGroupIndex = 0;
             select.value = selectedGroupIndex;
             select.style.display = 'block';
@@ -182,11 +211,11 @@
             select.onchange = (e) => {
                 selectedGroupIndex = parseInt(e.target.value);
                 localStorage.setItem('selectedGroup', selectedGroupIndex);
-                renderSchedule(rawData); 
+                renderSchedule(); 
             };
         }
 
-        function renderSchedule(rawData) {
+        function renderSchedule() {
             const group = groupsList[selectedGroupIndex];
             const days = ["ВОСКРЕСЕНЬЕ", "ПОНЕДЕЛЬНИК", "ВТОРНИК", "СРЕДА", "ЧЕТВЕРГ", "ПЯТНИЦА", "СУББОТА"];
             const todayName = days[new Date().getDay()];
@@ -196,17 +225,21 @@
             let lessons = [];
             let isToday = false;
 
-            // Начинаем сканировать с того места, где нашли группу
             for (let r = group.rowIndex; r < rawData.length; r++) {
-                const row = rawData[r];
-                if (!row) continue;
+                if (!rawData[r]) continue;
 
-                // Проверяем, не день ли это
-                let rowString = row.join(" ").toUpperCase();
-                let foundDay = days.find(d => rowString.includes(d));
+                // Ищем день (проверяем ячейки с учетом объединений)
+                let foundDay = null;
+                for (let c = 0; c < 5; c++) {
+                    let val = getCellValue(r, c).toUpperCase();
+                    if (days.includes(val) || days.some(d => val.includes(d))) {
+                        foundDay = days.find(d => val.includes(d));
+                        break;
+                    }
+                }
                 
                 if (foundDay) {
-                    if (isToday) break; // Если мы уже собрали пары на сегодня, выходим
+                    if (isToday) break; // Собрали на сегодня — выходим
                     currentDay = foundDay;
                     isToday = (foundDay === todayName);
                     lessons = [];
@@ -215,42 +248,39 @@
 
                 if (!isToday) continue;
 
-                // Ищем время пары
+                // Ищем время
                 let time = "";
                 let lessonNum = "";
-                row.forEach(cell => {
-                    if (typeof cell === 'string') {
-                        if (cell.match(/\d{1,2}:\d{2}\s*[-–—]\s*\d{1,2}:\d{2}/)) time = cell;
-                        if (cell.match(/^\d{1,2}$/)) lessonNum = cell;
-                    }
-                });
+                for (let c = 0; c < 3; c++) {
+                    let val = getCellValue(r, c);
+                    if (val.match(/\d{1,2}:\d{2}\s*[-–—]\s*\d{1,2}:\d{2}/)) time = val;
+                    if (val.match(/^\d{1,2}$/)) lessonNum = val;
+                }
 
-                // Если нашли время, значит это пара
                 if (time) {
-                    // Предмет находится строго в колонке нашей группы
-                    let subject = row[group.colIndex] ? String(row[group.colIndex]).trim() : "";
+                    // Берем предмет из колонки группы (с учетом объединений)
+                    let subject = getCellValue(r, group.colIndex);
+                    
                     let teacher = "";
                     let room = "";
 
-                    // Если вдруг в колонке группы пусто, пытаемся найти предмет в соседних (объединенные ячейки)
+                    // Если предмет пустой или это прочерк, ищем в соседних колонках
                     if (!subject || subject === "—") {
                         for (let c = group.colIndex; c < group.colIndex + 4; c++) {
-                            let val = row[c] ? String(row[c]).trim() : "";
+                            let val = getCellValue(r, c);
                             if (val.length > 3 && !val.match(/^\d+$/) && !val.includes(":")) {
                                 subject = val; break;
                             }
                         }
                     }
 
-                    // Ищем препода и кабинет в остальных ячейках строки
-                    row.forEach(cell => {
-                        if (typeof cell !== 'string') return;
-                        let val = cell.trim();
-                        if (val === subject || val === time || val === lessonNum) return;
-                        
-                        if (/^[А-ЯЁ][а-яё]+\s[А-ЯЁ]\.[А-ЯЁ]\./.test(val)) teacher = val;
-                        if (/^\d{1,3}[а-яА-Я]?$/.test(val) && val !== lessonNum) room = val;
-                    });
+                    // Ищем препода и кабинет
+                    for (let c = 0; c < rawData[r].length; c++) {
+                        let val = getCellValue(r, c);
+                        if (val === subject || val === time || val === lessonNum) continue;
+                        if (val.match(/^[А-ЯЁ][а-яё]+\s[А-ЯЁ]\.[А-ЯЁ]\./)) teacher = val;
+                        if (val.match(/^\d{1,3}[а-яА-Я]?$/) && val !== lessonNum) room = val;
+                    }
 
                     if (subject && subject.length > 1) {
                         lessons.push({ num: lessonNum, time, subject, teacher, room });
