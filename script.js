@@ -41,7 +41,7 @@ async function loadAllSchedules() {
             try {
                 const fileRes = await fetch(PROXY + encodeURIComponent(url));
                 const arrayBuffer = await fileRes.arrayBuffer();
-                parseAndAddFile(arrayBuffer);
+                await parseAndAddFile(arrayBuffer);
             } catch (e) { console.warn("Ошибка файла: " + url, e); }
         }
 
@@ -66,11 +66,25 @@ async function loadAllSchedules() {
     }
 }
 
-function parseAndAddFile(arrayBuffer) {
+async function parseAndAddFile(arrayBuffer) {
     try {
-        const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-        let rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(arrayBuffer);
+        const worksheet = workbook.worksheets[0]; 
+        
+        let rawData = [];
+        worksheet.eachRow((row, rowNumber) => {
+            let rowData = [];
+            row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+                // Извлекаем чистый текст из ячейки
+                let val = cell.value;
+                if (val && typeof val === 'object' && val.richText) {
+                    val = val.richText.map(t => t.text).join('');
+                }
+                rowData[colNumber - 1] = val || "";
+            });
+            rawData[rowNumber - 1] = rowData;
+        });
         
         rawData.forEach((row, rowIndex) => {
             row.forEach((cell, colIndex) => {
@@ -155,19 +169,20 @@ function renderSchedule() {
     renderLessons(displayLessons);
 }
 
-// --- ПОЛНОСТЬЮ ПЕРЕПИСАННАЯ ЛОГИКА (КАК В ANDROID) ---
+// --- СТРОГИЙ ПОИСК (ТОЛЬКО В КОЛОНКЕ ГРУППЫ) ---
 function findLessons(rawData, startRow, groupCol, targetDayName) {
     let lessons = [];
     let isCurrentDay = false;
     const daysArr = ["ВОСКРЕСЕНЬЕ", "ПОНЕДЕЛЬНИК", "ВТОРНИК", "СРЕДА", "ЧЕТВЕРГ", "ПЯТНИЦА", "СУББОТА"];
     
-    const teacherRegex = /^[А-ЯЁа-яё\-]+\.?\s*[А-ЯЁ]\.[А-ЯЁ]\.(?:\s*,\s*[А-ЯЁа-яё\-]+\.?\s*[А-ЯЁ]\.[А-ЯЁ]\.)*$/;
-    const timeRegex = /\d{1,2}:\d{2}\s*[-–—]\s*\d{1,2}:\d{2}/;
+    const teacherRegex = /^[А-ЯЁа-яё\-]+\s*[А-ЯЁ]\.\s*[А-ЯЁ]\./; // Более мягкая проверка на препода (напр. Иванов И.И.)
+    const timeRegex = /\d{1,2}:\d{2}/; // Просто ищем двоеточие (время)
 
     for (let r = startRow; r < rawData.length; r++) {
         if (!rawData[r]) continue;
         
-        let rowString = rawData[r].slice(0, 5).map(c => typeof c === 'string' ? c : '').join(" ").toUpperCase();
+        // Ищем день недели (строго в первых 2 колонках)
+        let rowString = rawData[r].slice(0, 2).map(c => typeof c === 'string' ? c : '').join(" ").toUpperCase();
         let foundDay = daysArr.find(d => rowString.includes(d));
         
         if (foundDay) {
@@ -178,82 +193,54 @@ function findLessons(rawData, startRow, groupCol, targetDayName) {
 
         if (!isCurrentDay) continue;
 
-        // 1. Ищем номер пары и время (в первых колонках)
+        // Ищем номер пары и время (строго в 1-й и 2-й колонке)
         let time1 = "";
         let num1 = "";
-        for(let c=1; c<5; c++) {
-            let cell = rawData[r][c];
-            if (typeof cell === 'string') {
-                let match = cell.match(timeRegex);
-                if (match) time1 = match[0];
-                if (cell.match(/^\d{1,2}$/)) num1 = cell;
-            }
-        }
+        let col1 = rawData[r][1] ? String(rawData[r][1]).trim() : "";
+        let col2 = rawData[r][2] ? String(rawData[r][2]).trim() : "";
 
-        // 2. Проверяем следующую строку (часто там вторая половина времени или номер)
-        let time2 = "";
-        let num2 = "";
-        let nextRowIsDay = false;
-        
-        if (r + 1 < rawData.length) {
-            let nextRowStr = rawData[r+1].slice(0, 5).map(c => typeof c === 'string' ? c : '').join(" ").toUpperCase();
-            nextRowIsDay = daysArr.some(d => nextRowStr.includes(d));
+        if (col1.match(/^\d{1,2}$/)) num1 = col1;
+        if (col1.match(timeRegex)) time1 = col1;
+        if (col2.match(timeRegex)) time1 = col2;
+
+        if (time1) {
+            // Проверяем следующую строку на наличие второй части времени
+            let time2 = "";
+            if (r + 1 < rawData.length) {
+                let nextRowStr = rawData[r+1].slice(0, 2).map(c => typeof c === 'string' ? c : '').join(" ").toUpperCase();
+                if (!daysArr.some(d => nextRowStr.includes(d))) {
+                    let nextCol2 = rawData[r+1][2] ? String(rawData[r+1][2]).trim() : "";
+                    if (nextCol2.match(timeRegex) && nextCol2 !== time1) time2 = nextCol2;
+                }
+            }
+
+            let finalTimes = time1 + (time2 ? " / " + time2 : "");
             
-            if (!nextRowIsDay) {
-                for(let c=1; c<5; c++) {
-                    let cell = rawData[r+1][c];
-                    if (typeof cell === 'string') {
-                        let match = cell.match(timeRegex);
-                        if (match) time2 = match[0];
-                        if (cell.match(/^\d{1,2}$/)) num2 = cell;
+            // БЕРЕМ ДАННЫЕ СТРОГО ИЗ КОЛОНКИ ГРУППЫ
+            let groupCell = rawData[r][groupCol] ? String(rawData[r][groupCol]).trim() : "";
+            
+            // Если в колонке группы пусто, значит это, скорее всего, "окно" или объединенная ячейка сверху
+            if (groupCell && groupCell !== "—" && !groupCell.match(timeRegex)) {
+                let lines = groupCell.split('\n').map(s => s.trim()).filter(s => s.length > 0);
+                let subject = lines.length > 0 ? lines[0] : groupCell;
+                let teacher = "";
+                
+                // Если преподаватель записан на следующей строке в той же ячейке
+                if (lines.length > 1) teacher = lines[1];
+
+                // Пытаемся найти препода в соседних колонках, если не нашли в ячейке
+                if (!teacher) {
+                    for(let c = groupCol + 1; c < groupCol + 3; c++) {
+                         let neighbor = rawData[r][c] ? String(rawData[r][c]).trim() : "";
+                         if (neighbor && teacherRegex.test(neighbor)) { teacher = neighbor; break; }
                     }
                 }
-            }
-        }
-
-        // 3. Если нашли время, значит это пара
-        if (time1) {
-            let isNextRowNewPair = num2 && num2.match(/^\d{1,2}$/) && num2 !== num1;
-            let finalTimes = time1;
-            if (!isNextRowNewPair && time2 && time2 !== time1) {
-                finalTimes = time1 + " / " + time2;
-            }
-
-            let lessonNum = num1 || num2;
-            let rowsToScan = isNextRowNewPair ? [r] : [r, r+1];
-            
-            // 4. Собираем ВСЕ тексты из строки (включая объединенные ячейки и соседние колонки)
-            let texts = [];
-            for (let row of rowsToScan) {
-                if (row >= rawData.length) continue;
-                for (let c = groupCol; c <= Math.min(groupCol + 5, rawData[row].length - 1); c++) {
-                    if (rawData[row][c]) texts.push(String(rawData[row][c]).replace(/\n/g, " ").trim());
-                }
-            }
-
-            let subject = "";
-            let teacher = "";
-            let room = "";
-
-            // 5. Фильтруем тексты по регуляркам (как в Kotlin)
-            for (let text of [...new Set(texts)]) {
-                if (teacherRegex.test(text)) { if (!teacher) teacher = text; }
-                else if (timeRegex.test(text)) { /* skip */ }
-                else if (text === lessonNum) { /* skip */ }
-                else if (text.match(/^[0-9]{1,4}[а-яА-Яa-zA-Z]?$/) || text.match(/^[0-9]{1,3}[\/\\\\][0-9]$/) || text.toLowerCase().includes("зал") || text.toLowerCase().includes("ауд") || text.toLowerCase().includes("спорт")) {
-                    if (!room) room = text;
-                } else {
-                    // Если текст длинный и не похож на кабинет/преподавателя — это предмет
-                    if (text.length >= 2 && (!subject || text.length > subject.length)) subject = text;
-                }
-            }
-
-            if (subject) {
-                lessons.push({ num: lessonNum, time: finalTimes, subject, teacher, room });
+                
+                lessons.push({ num: num1 || "•", time: finalTimes, subject: subject, teacher: teacher, room: "" });
             }
             
-            // Сдвигаем указатель, если мы поглотили вторую строку
-            if (!isNextRowNewPair && time2) r++; 
+            // Если следующая строка была продолжением этой же пары, пропускаем её
+            if (time2) r++; 
         }
     }
     return lessons;
@@ -273,12 +260,11 @@ function renderLessons(lessons) {
         
         let metaHtml = '';
         if (l.teacher) metaHtml += `<span>${l.teacher}</span>`;
-        if (l.room) metaHtml += `<span class="room-badge">ауд. ${l.room}</span>`;
 
         card.innerHTML = `
             <div class="lesson-time-block">
-                <div class="lesson-num">${l.num || '•'}</div>
-                <div class="lesson-time">${l.time.split('/')[0].split('-')[0].trim()}</div>
+                <div class="lesson-num">${l.num}</div>
+                <div class="lesson-time">${l.time.split('/')[0].trim()}</div>
             </div>
             <div class="lesson-info">
                 <div class="lesson-subject">${l.subject}</div>
