@@ -155,6 +155,7 @@ function renderSchedule() {
     renderLessons(displayLessons);
 }
 
+// --- НОВАЯ ЛОГИКА ПОИСКА (КАК В ANDROID) ---
 function findLessons(rawData, startRow, groupCol, targetDayName) {
     let lessons = [];
     let isCurrentDay = false;
@@ -166,7 +167,8 @@ function findLessons(rawData, startRow, groupCol, targetDayName) {
     for (let r = startRow; r < rawData.length; r++) {
         if (!rawData[r]) continue;
         
-        let rowString = rawData[r].slice(0, 5).map(c => typeof c === 'string' ? c : '').join(" ").toUpperCase();
+        // Ищем название дня в первых 4 колонках
+        let rowString = rawData[r].slice(0, 4).map(c => typeof c === 'string' ? c : '').join(" ").toUpperCase();
         let foundDay = daysArr.find(d => rowString.includes(d));
         
         if (foundDay) {
@@ -177,6 +179,7 @@ function findLessons(rawData, startRow, groupCol, targetDayName) {
 
         if (!isCurrentDay) continue;
 
+        // Ищем время в первой строке пары
         let time1 = "";
         let num1 = "";
         for(let c=1; c<5; c++) {
@@ -188,31 +191,32 @@ function findLessons(rawData, startRow, groupCol, targetDayName) {
             }
         }
 
-        let time2 = "";
-        let num2 = "";
-        let nextRowIsDay = false;
-        
-        if (r + 1 < rawData.length) {
-            let nextRowStr = rawData[r+1].slice(0, 5).map(c => typeof c === 'string' ? c : '').join(" ").toUpperCase();
-            nextRowIsDay = daysArr.some(d => nextRowStr.includes(d));
+        if (time1) {
+            // Проверяем следующую строку (вдруг там вторая часть времени или номер пары)
+            let time2 = "";
+            let num2 = "";
+            let nextRowIsDay = false;
             
-            if (!nextRowIsDay) {
-                for(let c=1; c<5; c++) {
-                    let cell = rawData[r+1][c];
-                    if (typeof cell === 'string') {
-                        let match = cell.match(timeRegex);
-                        if (match) time2 = match[0];
-                        if (cell.match(/^\d{1,2}$/)) num2 = cell;
+            if (r + 1 < rawData.length) {
+                let nextRowStr = rawData[r + 1].slice(0, 4).map(c => typeof c === 'string' ? c : '').join(" ").toUpperCase();
+                nextRowIsDay = daysArr.some(d => nextRowStr.includes(d));
+                
+                if (!nextRowIsDay) {
+                    for(let c=1; c<5; c++) {
+                        let cell = rawData[r+1][c];
+                        if (typeof cell === 'string') {
+                            let match = cell.match(timeRegex);
+                            if (match) time2 = match[0];
+                            if (cell.match(/^\d{1,2}$/)) num2 = cell;
+                        }
                     }
                 }
             }
-        }
 
-        if (time1) {
             let isNextRowNewPair = num2 && num2.match(/^\d{1,2}$/) && num2 !== num1;
             let finalTimes = time1;
             if (!isNextRowNewPair && time2 && time2 !== time1) {
-                finalTimes = time1 + "\n" + time2;
+                finalTimes = time1 + " / " + time2; // Объединяем время
             }
 
             let lessonNum = num1 || num2;
@@ -245,6 +249,7 @@ function findLessons(rawData, startRow, groupCol, targetDayName) {
                 lessons.push({ num: lessonNum, time: finalTimes, subject, teacher, room });
             }
             
+            // Пропускаем следующую строку, если мы её уже прочитали
             if (!isNextRowNewPair && time2) r++; 
         }
     }
@@ -267,10 +272,13 @@ function renderLessons(lessons) {
         if (l.teacher) metaHtml += `<span>${l.teacher}</span>`;
         if (l.room) metaHtml += `<span class="room-badge">ауд. ${l.room}</span>`;
 
+        // Отображаем только начало времени для компактности, но с полным тултипом
+        let displayTime = l.time.split('/')[0].split('-')[0].trim();
+
         card.innerHTML = `
             <div class="lesson-time-block">
                 <div class="lesson-num">${l.num || '•'}</div>
-                <div class="lesson-time">${l.time.split('\n')[0].split('-')[0].trim()}</div>
+                <div class="lesson-time">${displayTime}</div>
             </div>
             <div class="lesson-info">
                 <div class="lesson-subject">${l.subject}</div>
