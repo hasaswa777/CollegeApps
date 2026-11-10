@@ -11,66 +11,32 @@
     <meta name="apple-mobile-web-app-title" content="Расписание">
     <link rel="apple-touch-icon" href="icon-192.png">
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <!-- Подключаем SheetJS для правильного чтения Excel -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
 
     <style>
         :root { 
-            --bg: #121212; 
-            --surface: #1E1E1E; 
-            --text: #E6E1E5; 
-            --text-muted: #A0A0A0;
-            --accent: #86D0FF; 
-            --border: #333333;
+            --bg: #121212; --surface: #1E1E1E; --text: #E6E1E5; 
+            --text-muted: #A0A0A0; --accent: #86D0FF; --border: #333333;
         }
-        body { 
-            margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
-            background-color: var(--bg); color: var(--text); 
-            display: flex; flex-direction: column; height: 100vh; 
-        }
-        
-        /* Шапка */
-        .header { 
-            padding: 15px 20px; background: var(--surface); 
-            display: flex; flex-direction: column; gap: 10px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-            z-index: 10;
-        }
+        body { margin: 0; padding: 0; font-family: -apple-system, sans-serif; background-color: var(--bg); color: var(--text); display: flex; flex-direction: column; height: 100vh; }
+        .header { padding: 15px 20px; background: var(--surface); display: flex; flex-direction: column; gap: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); z-index: 10; }
         .header-top { display: flex; justify-content: space-between; align-items: center; }
         .header h1 { margin: 0; font-size: 20px; font-weight: 600; }
-        
-        .group-select { 
-            width: 100%; box-sizing: border-box;
-            background: var(--bg); color: var(--accent); border: 1px solid var(--border);
-            padding: 12px 15px; border-radius: 10px; font-size: 16px; font-weight: 500;
-            outline: none; appearance: none;
-        }
-        
-        /* Контент */
+        .group-select { width: 100%; box-sizing: border-box; background: var(--bg); color: var(--accent); border: 1px solid var(--border); padding: 12px 15px; border-radius: 10px; font-size: 16px; font-weight: 500; outline: none; }
         .content { flex: 1; overflow-y: auto; padding: 20px; }
-        .loader { text-align: center; margin-top: 50px; color: var(--accent); font-size: 16px; }
-        
-        /* Карточки пар */
-        .day-title { font-size: 14px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 15px; font-weight: bold; }
-        .lesson-card { 
-            background: var(--surface); border-radius: 14px; padding: 16px; 
-            margin-bottom: 12px; display: flex; gap: 15px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-            border-left: 4px solid var(--border);
-            transition: border-color 0.3s;
-        }
-        .lesson-card.active { border-left-color: var(--accent); }
-        
+        .loader { text-align: center; margin-top: 50px; color: var(--accent); }
+        .day-title { font-size: 14px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 15px; font-weight: bold; }
+        .lesson-card { background: var(--surface); border-radius: 14px; padding: 16px; margin-bottom: 12px; display: flex; gap: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); border-left: 4px solid var(--border); }
         .lesson-time-block { display: flex; flex-direction: column; min-width: 60px; justify-content: center; }
         .lesson-num { font-size: 20px; font-weight: 800; color: var(--accent); line-height: 1; }
         .lesson-time { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
-        
         .lesson-info { flex: 1; display: flex; flex-direction: column; justify-content: center; }
-        .lesson-subject { font-size: 16px; font-weight: 600; margin-bottom: 4px; line-height: 1.3; }
-        .lesson-meta { font-size: 13px; color: var(--text-muted); display: flex; flex-wrap: wrap; gap: 8px; }
-        .room-badge { background: rgba(134, 208, 255, 0.15); color: var(--accent); padding: 2px 6px; border-radius: 4px; font-weight: bold; }
-        
-        .error { color: #FF5252; text-align: center; margin-top: 20px; background: rgba(255, 82, 82, 0.1); padding: 15px; border-radius: 10px; }
-        .ios-hint { display: none; padding: 10px; text-align: center; font-size: 12px; color: var(--text-muted); border-top: 1px solid var(--border); background: var(--surface); }
+        .lesson-subject { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+        .lesson-meta { font-size: 13px; color: var(--text-muted); }
+        .room-badge { background: rgba(134, 208, 255, 0.15); color: var(--accent); padding: 2px 6px; border-radius: 4px; font-weight: bold; margin-left: 5px; }
+        .error { color: #FF5252; text-align: center; background: rgba(255, 82, 82, 0.1); padding: 15px; border-radius: 10px; }
+        .ios-hint { display: none; padding: 10px; text-align: center; font-size: 12px; color: var(--text-muted); background: var(--surface); }
     </style>
 </head>
 <body>
@@ -83,7 +49,7 @@
     </div>
 
     <div class="content" id="content">
-        <div class="loader">⏳ Скачиваем и обрабатываем расписание...</div>
+        <div class="loader">⏳ Загрузка расписания...</div>
     </div>
 
     <div class="ios-hint" id="ios-hint">
@@ -95,11 +61,9 @@
         const BASE_URL = 'https://politech-nsk.ru';
         const PROXY = 'https://schedule-proxy.ivanushca99.workers.dev/?url=';
         
+        let workbook = null;
         let groupsList = [];
         let selectedGroupIndex = 0;
-        let grid = {}; // Храним всю таблицу
-        let maxRow = 0;
-        let groupsRow = 0;
 
         document.addEventListener('DOMContentLoaded', () => {
             if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
@@ -113,11 +77,8 @@
 
         async function loadSchedule() {
             try {
-                // Загружаем HTML страницу
                 const response = await fetch(PROXY + encodeURIComponent(SITE_URL));
-                if (!response.ok) throw new Error("Ошибка сети");
                 const html = await response.text();
-                
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(html, 'text/html');
                 const links = Array.from(doc.querySelectorAll('a[href]'));
@@ -131,7 +92,7 @@
                     }
                 }
 
-                if (!excelUrl) throw new Error("Файл Excel не найден на сайте.");
+                if (!excelUrl) throw new Error("Файл Excel не найден");
                 await downloadExcel(excelUrl);
 
             } catch (e) {
@@ -148,19 +109,15 @@
         async function downloadExcel(url) {
             try {
                 const response = await fetch(PROXY + encodeURIComponent(url));
-                if (!response.ok) throw new Error("Ошибка прокси");
                 const arrayBuffer = await response.arrayBuffer();
                 
                 const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
                 localStorage.setItem('cachedExcelData', base64);
 
-                await parseExcel(arrayBuffer);
+                parseExcelData(arrayBuffer);
             } catch (e) {
-                if (localStorage.getItem('cachedExcelData')) {
-                    parseExcelFromBase64(localStorage.getItem('cachedExcelData'));
-                } else {
-                    showError("Ошибка при чтении файла. Попробуйте позже.");
-                }
+                if (localStorage.getItem('cachedExcelData')) parseExcelFromBase64(localStorage.getItem('cachedExcelData'));
+                else showError("Ошибка при скачивании файла.");
             }
         }
 
@@ -168,87 +125,48 @@
             const binaryString = atob(base64);
             const bytes = new Uint8Array(binaryString.length);
             for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
-            parseExcel(bytes.buffer);
+            parseExcelData(bytes.buffer);
         }
 
-        async function parseExcel(arrayBuffer) {
+        // --- ГЛАВНОЕ ИЗМЕНЕНИЕ: Использование SheetJS ---
+        function parseExcelData(arrayBuffer) {
             try {
-                const zip = await JSZip.loadAsync(arrayBuffer);
-                const sharedStringsFile = zip.file('xl/sharedStrings.xml');
-                const sheetFile = zip.file('xl/worksheets/sheet1.xml');
-                if (!sheetFile) throw new Error("Не Excel");
-
-                let sharedStrings = [];
-                if (sharedStringsFile) {
-                    const xml = await sharedStringsFile.async("string");
-                    const matches = xml.match(/<t[^>]*>(.*?)<\/t>/g) || [];
-                    sharedStrings = matches.map(m => m.replace(/<[^>]+>/g, ''));
-                }
-
-                const sheetXml = await sheetFile.async("string");
-                // Разбиваем на строки
-                const rows = sheetXml.match(/<row[^>]*>(.*?)<\/row>/g) || [];
+                // Читаем файл через библиотеку
+                workbook = XLSX.read(arrayBuffer, { type: 'array' });
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
                 
-                // Заполняем глобальный grid
-                grid = {};
-                maxRow = rows.length;
+                // Получаем все данные в виде массива массивов (AOA)
+                const rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
                 
-                rows.forEach((row, rIndex) => {
-                    const cells = row.match(/<c[^>]*>.*?<\/c>/g) || [];
-                    cells.forEach(cell => {
-                        const refMatch = cell.match(/r="([A-Z]+)\d+"/);
-                        const vMatch = cell.match(/<v>(.*?)<\/v>/);
-                        const tMatch = cell.match(/t="s"/);
-                        
-                        if (refMatch && vMatch) {
-                            const colLetter = refMatch[1];
-                            let val = vMatch[1];
-                            if (tMatch && sharedStrings[parseInt(val)]) val = sharedStrings[parseInt(val)];
-                            
-                            if (!grid[rIndex]) grid[rIndex] = {};
-                            grid[rIndex][colLetter] = val.trim();
+                // Ищем все возможные названия групп во всем документе
+                groupsList = [];
+                rawData.forEach((row, rowIndex) => {
+                    row.forEach((cell, colIndex) => {
+                        if (typeof cell === 'string' && cell.trim().length > 2) {
+                            // Паттерн: 3 цифры (курс) + пробел + 2-4 буквы (специальность)
+                            // Например: 124 ИСП, 216 ПКС
+                            if (/^\d{3}\s+[А-ЯЁA-Z]{2,4}/.test(cell.trim()) || cell.trim().includes("Группа")) {
+                                if (cell.trim() !== "Группа" && !groupsList.some(g => g.name === cell.trim())) {
+                                    groupsList.push({ name: cell.trim(), colIndex: colIndex, rowIndex: rowIndex });
+                                }
+                            }
                         }
                     });
                 });
 
-                // Ищем строку с группами
-                groupsRow = -1;
-                for (let r = 0; r < maxRow; r++) {
-                    if (grid[r]) {
-                        for (let col in grid[r]) {
-                            if (grid[r][col].toUpperCase().includes("ГРУППА")) { groupsRow = r; break; }
-                        }
-                    }
-                    if (groupsRow !== -1) break;
-                }
-
-                if (groupsRow === -1) throw new Error("Не найдена строка с группами");
-
-                // Собираем ВСЕ группы (сканируем строку с группами и строку под ней)
-                groupsList = [];
-                for (let r = groupsRow; r <= groupsRow + 1; r++) {
-                    if (!grid[r]) continue;
-                    for (let col in grid[r]) {
-                        let val = grid[r][col];
-                        if (val && val !== "Группа" && val !== "№" && val.length > 1 && !val.includes("курс")) {
-                            // Проверяем, чтобы не дублировалось
-                            if (!groupsList.some(g => g.name === val)) {
-                                groupsList.push({ colLetter: col, name: val });
-                            }
-                        }
-                    }
-                }
-
-                populateGroupSelector();
-                renderCurrentDay();
+                if (groupsList.length === 0) throw new Error("Группы не найдены");
+                
+                populateGroupSelector(rawData);
+                renderSchedule(rawData);
 
             } catch (e) {
                 console.error(e);
-                showError("Ошибка формата Excel файла.");
+                showError("Ошибка формата Excel.");
             }
         }
 
-        function populateGroupSelector() {
+        function populateGroupSelector(rawData) {
             const select = document.getElementById('group-select');
             select.innerHTML = '';
             groupsList.forEach((g, i) => {
@@ -264,73 +182,75 @@
             select.onchange = (e) => {
                 selectedGroupIndex = parseInt(e.target.value);
                 localStorage.setItem('selectedGroup', selectedGroupIndex);
-                renderCurrentDay(); 
+                renderSchedule(rawData); 
             };
         }
 
-        function renderCurrentDay() {
-            if (!grid || groupsList.length === 0) return;
-
-            const groupName = groupsList[selectedGroupIndex].name;
-            const groupCol = groupsList[selectedGroupIndex].colLetter;
-            
+        function renderSchedule(rawData) {
+            const group = groupsList[selectedGroupIndex];
             const days = ["ВОСКРЕСЕНЬЕ", "ПОНЕДЕЛЬНИК", "ВТОРНИК", "СРЕДА", "ЧЕТВЕРГ", "ПЯТНИЦА", "СУББОТА"];
             const todayName = days[new Date().getDay()];
             document.getElementById('day-title').textContent = todayName;
 
             let currentDay = null;
             let lessons = [];
+            let isToday = false;
 
-            // Идем по строкам после групп
-            for (let r = groupsRow + 2; r < maxRow; r++) {
-                if (!grid[r]) continue;
-                
-                // Проверяем, не является ли строка названием дня
-                let rowString = Object.values(grid[r]).join(" ").toUpperCase();
+            // Начинаем сканировать с того места, где нашли группу
+            for (let r = group.rowIndex; r < rawData.length; r++) {
+                const row = rawData[r];
+                if (!row) continue;
+
+                // Проверяем, не день ли это
+                let rowString = row.join(" ").toUpperCase();
                 let foundDay = days.find(d => rowString.includes(d));
                 
                 if (foundDay) {
-                    if (currentDay === todayName) break; // Если мы уже собрали для сегодня, выходим
+                    if (isToday) break; // Если мы уже собрали пары на сегодня, выходим
                     currentDay = foundDay;
+                    isToday = (foundDay === todayName);
                     lessons = [];
                     continue;
                 }
 
-                if (currentDay !== todayName) continue;
+                if (!isToday) continue;
 
-                // Ищем время пары (обычно в колонке B или C)
+                // Ищем время пары
                 let time = "";
                 let lessonNum = "";
-                for (let col in grid[r]) {
-                    let val = grid[r][col];
-                    if (val.match(/\d{1,2}:\d{2}\s*[-–—]\s*\d{1,2}:\d{2}/)) time = val;
-                    if (val.match(/^\d{1,2}$/)) lessonNum = val;
-                }
+                row.forEach(cell => {
+                    if (typeof cell === 'string') {
+                        if (cell.match(/\d{1,2}:\d{2}\s*[-–—]\s*\d{1,2}:\d{2}/)) time = cell;
+                        if (cell.match(/^\d{1,2}$/)) lessonNum = cell;
+                    }
+                });
 
-                // Если есть время, значит это пара
+                // Если нашли время, значит это пара
                 if (time) {
-                    let subject = grid[r][groupCol] || "";
+                    // Предмет находится строго в колонке нашей группы
+                    let subject = row[group.colIndex] ? String(row[group.colIndex]).trim() : "";
                     let teacher = "";
                     let room = "";
 
-                    // Умный поиск: если в колонке группы пусто, ищем предмет в соседних колонках
+                    // Если вдруг в колонке группы пусто, пытаемся найти предмет в соседних (объединенные ячейки)
                     if (!subject || subject === "—") {
-                        for (let col in grid[r]) {
-                            let val = grid[r][col];
-                            if (val && val.length > 3 && !val.match(/^\d+$/) && !val.includes(":") && !val.includes(groupName)) {
-                                subject = val;
-                                break;
+                        for (let c = group.colIndex; c < group.colIndex + 4; c++) {
+                            let val = row[c] ? String(row[c]).trim() : "";
+                            if (val.length > 3 && !val.match(/^\d+$/) && !val.includes(":")) {
+                                subject = val; break;
                             }
                         }
                     }
 
-                    // Пытаемся найти преподавателя и кабинет (по регуляркам)
-                    for (let col in grid[r]) {
-                        let val = grid[r][col];
-                        if (val === subject || val === time || val === lessonNum) continue;
-                        if (val.match(/^[А-ЯЁ][а-яё]+\s[А-ЯЁ]\.[А-ЯЁ]\./)) teacher = val; // Фамилия И.О.
-                        if (val.match(/^\d{1,3}[а-яА-Я]?$/)) room = val; // Просто цифра (кабинет)
-                    }
+                    // Ищем препода и кабинет в остальных ячейках строки
+                    row.forEach(cell => {
+                        if (typeof cell !== 'string') return;
+                        let val = cell.trim();
+                        if (val === subject || val === time || val === lessonNum) return;
+                        
+                        if (/^[А-ЯЁ][а-яё]+\s[А-ЯЁ]\.[А-ЯЁ]\./.test(val)) teacher = val;
+                        if (/^\d{1,3}[а-яА-Я]?$/.test(val) && val !== lessonNum) room = val;
+                    });
 
                     if (subject && subject.length > 1) {
                         lessons.push({ num: lessonNum, time, subject, teacher, room });
