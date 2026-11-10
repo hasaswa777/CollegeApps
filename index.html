@@ -64,7 +64,6 @@
         document.addEventListener('DOMContentLoaded', () => {
             if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
             if (/iPad|iPhone|iPod/.test(navigator.userAgent)) document.getElementById('ios-hint').style.display = 'block';
-            
             loadAllSchedules();
         });
 
@@ -94,15 +93,13 @@
                     try {
                         const fileRes = await fetch(PROXY + encodeURIComponent(url));
                         const arrayBuffer = await fileRes.arrayBuffer();
-                        parseAndAddFile(arrayBuffer, count); // Передаем номер файла для дебага
+                        parseAndAddFile(arrayBuffer, count);
                     } catch (e) { console.warn("Ошибка файла: " + url, e); }
                 }
 
                 if (groupsList.length === 0) throw new Error("Группы не найдены");
 
-                // Сортируем по курсу (по вычисленному), затем по алфавиту
                 groupsList.sort((a, b) => a.course - b.course || a.name.localeCompare(b.name));
-
                 populateGroupSelector();
                 
                 const savedGroupName = localStorage.getItem('selectedGroupName');
@@ -113,7 +110,6 @@
                         document.getElementById('group-select').value = selectedGroupIndex;
                     }
                 }
-                
                 renderSchedule();
 
             } catch (e) {
@@ -133,20 +129,11 @@
                         if (typeof cell === 'string' && cell.trim().length > 2) {
                             if (/^\d{3}\s+[А-ЯЁA-Z]{2,4}/.test(cell.trim())) {
                                 let groupName = cell.trim();
-                                
                                 if (!groupsDatabase[groupName]) {
-                                    // Вычисляем курс по ПОСЛЕДНЕЙ цифре (как вы сказали)
-                                    // 6 -> 1, 5 -> 2, 4 -> 3, 3 -> 4
-                                    let lastDigit = parseInt(groupName.slice(-1)); // берем последний символ (но там буквы)
-                                    // На самом деле номер группы обычно заканчивается цифрой, но перед ней буквы.
-                                    // Берем первое число из строки (например, "126 РУП" -> 126)
                                     let numMatch = groupName.match(/\d+/);
                                     let baseNum = numMatch ? numMatch[0] : "0";
-                                    
-                                    // Берем последнюю цифру из номера (например, из 126 берем 6)
                                     let courseDigit = parseInt(baseNum.charAt(baseNum.length - 1));
                                     
-                                    // Маппинг: 6=1, 5=2, 4=3, 3=4. Если другая - ставим как есть.
                                     let realCourse = courseDigit;
                                     if (courseDigit === 6) realCourse = 1;
                                     else if (courseDigit === 5) realCourse = 2;
@@ -159,25 +146,18 @@
                                         colIndex: colIndex,
                                         fileId: fileId
                                     };
-
-                                    groupsList.push({
-                                        name: groupName,
-                                        course: realCourse
-                                    });
+                                    groupsList.push({ name: groupName, course: realCourse });
                                 }
                             }
                         }
                     });
                 });
-            } catch (e) {
-                console.warn("Ошибка парсинга файла " + fileId, e);
-            }
+            } catch (e) { console.warn("Ошибка парсинга файла " + fileId, e); }
         }
 
         function populateGroupSelector() {
             const select = document.getElementById('group-select');
             select.innerHTML = '';
-            
             let currentCourse = -1;
             let optgroup = null;
 
@@ -188,7 +168,6 @@
                     optgroup.label = `${currentCourse} курс`;
                     select.appendChild(optgroup);
                 }
-                
                 const opt = document.createElement('option');
                 opt.value = i;
                 opt.textContent = g.name;
@@ -196,7 +175,6 @@
             });
 
             select.style.display = 'block';
-            
             select.onchange = (e) => {
                 selectedGroupIndex = parseInt(e.target.value);
                 localStorage.setItem('selectedGroupName', groupsList[selectedGroupIndex].name);
@@ -206,7 +184,6 @@
 
         function renderSchedule() {
             if (groupsList.length === 0) return;
-            
             const group = groupsList[selectedGroupIndex];
             const data = groupsDatabase[group.name];
             if (!data) return;
@@ -215,12 +192,12 @@
             let todayIdx = new Date().getDay();
             let tomorrowIdx = (todayIdx + 1) % 7;
             
-            let todayLessons = findLessons(data.rawData, data.rowIndex, data.colIndex, days[todayIdx], group.name);
+            let todayLessons = findLessons(data.rawData, data.rowIndex, data.colIndex, days[todayIdx]);
             let displayLessons = todayLessons;
             let displayDayName = days[todayIdx];
             
             if (todayLessons.length === 0) {
-                let tomorrowLessons = findLessons(data.rawData, data.rowIndex, data.colIndex, days[tomorrowIdx], group.name);
+                let tomorrowLessons = findLessons(data.rawData, data.rowIndex, data.colIndex, days[tomorrowIdx]);
                 if (tomorrowLessons.length > 0) {
                     displayLessons = tomorrowLessons;
                     displayDayName = days[tomorrowIdx] + " (Завтра)";
@@ -231,72 +208,104 @@
             renderLessons(displayLessons);
         }
 
-        // Точная логика поиска, как в Android
-        function findLessons(rawData, startRow, groupCol, targetDayName, groupName) {
+        // --- ТОЧНАЯ ЛОГИКА ИЗ ANDROID ---
+        function findLessons(rawData, startRow, groupCol, targetDayName) {
             let lessons = [];
             let isCurrentDay = false;
             const daysArr = ["ВОСКРЕСЕНЬЕ", "ПОНЕДЕЛЬНИК", "ВТОРНИК", "СРЕДА", "ЧЕТВЕРГ", "ПЯТНИЦА", "СУББОТА"];
+            
+            // Регулярки из Kotlin
+            const teacherRegex = /^[А-ЯЁа-яё\-]+\.?\s*[А-ЯЁ]\.[А-ЯЁ]\.(?:\s*,\s*[А-ЯЁа-яё\-]+\.?\s*[А-ЯЁ]\.[А-ЯЁ]\.)*$/;
+            const timeRegex = /\d{1,2}:\d{2}\s*[-–—]\s*\d{1,2}:\d{2}/;
 
             for (let r = startRow; r < rawData.length; r++) {
                 if (!rawData[r]) continue;
                 
-                // Ищем день в строке (склеиваем первые 4 колонки)
-                let rowString = rawData[r].slice(0, 4).map(c => typeof c === 'string' ? c : '').join(" ").toUpperCase();
+                // Проверка на день
+                let rowString = rawData[r].slice(0, 5).map(c => typeof c === 'string' ? c : '').join(" ").toUpperCase();
                 let foundDay = daysArr.find(d => rowString.includes(d));
                 
                 if (foundDay) {
-                    if (isCurrentDay) break; 
+                    if (isCurrentDay) break;
                     isCurrentDay = (foundDay === targetDayName);
                     continue;
                 }
 
                 if (!isCurrentDay) continue;
 
-                // Ищем время
-                let time = "";
-                let lessonNum = "";
+                // Ищем время (сканируем первые колонки)
+                let time1 = "";
+                let num1 = "";
                 for(let c=1; c<5; c++) {
                     let cell = rawData[r][c];
                     if (typeof cell === 'string') {
-                        if (cell.match(/\d{1,2}:\d{2}\s*[-–—]\s*\d{1,2}:\d{2}/)) time = cell;
-                        if (cell.match(/^\d{1,2}$/)) lessonNum = cell;
+                        let match = cell.match(timeRegex);
+                        if (match) time1 = match[0];
+                        if (cell.match(/^\d{1,2}$/)) num1 = cell;
                     }
                 }
 
-                if (time) {
+                // Проверяем, не объединена ли пара со следующей строкой
+                let time2 = "";
+                let num2 = "";
+                let nextRowIsDay = false;
+                
+                if (r + 1 < rawData.length) {
+                    let nextRowStr = rawData[r+1].slice(0, 5).map(c => typeof c === 'string' ? c : '').join(" ").toUpperCase();
+                    nextRowIsDay = daysArr.some(d => nextRowStr.includes(d));
+                    
+                    if (!nextRowIsDay) {
+                        for(let c=1; c<5; c++) {
+                            let cell = rawData[r+1][c];
+                            if (typeof cell === 'string') {
+                                let match = cell.match(timeRegex);
+                                if (match) time2 = match[0];
+                                if (cell.match(/^\d{1,2}$/)) num2 = cell;
+                            }
+                        }
+                    }
+                }
+
+                if (time1) {
+                    let isNextRowNewPair = num2 && num2.match(/^\d{1,2}$/) && num2 !== num1;
+                    let finalTimes = time1;
+                    if (!isNextRowNewPair && time2 && time2 !== time1) {
+                        finalTimes = time1 + "\n" + time2;
+                    }
+
+                    let lessonNum = num1 || num2;
+                    let rowsToScan = isNextRowNewPair ? [r] : [r, r+1];
+                    
+                    let texts = [];
+                    for (let row of rowsToScan) {
+                        if (row >= rawData.length) continue;
+                        // Сканируем колонку группы и 4 колонки вправо
+                        for (let c = groupCol; c <= Math.min(groupCol + 4, rawData[row].length - 1); c++) {
+                            if (rawData[row][c]) texts.push(String(rawData[row][c]).replace(/\n/g, " ").trim());
+                        }
+                    }
+
                     let subject = "";
                     let teacher = "";
                     let room = "";
 
-                    let groupCell = rawData[r][groupCol] ? String(rawData[r][groupCol]).trim() : "";
-                    
-                    // Если в ячейке группы есть текст, и это не время и не прочерк
-                    if (groupCell && groupCell.length > 1 && groupCell !== "—" && !groupCell.includes(":")) {
-                        subject = groupCell;
-                    } else {
-                        // Если пусто, смотрим соседние колонки СПРАВА
-                        for (let c = groupCol; c < groupCol + 4; c++) {
-                            if (!rawData[r][c]) continue;
-                            let val = String(rawData[r][c]).trim();
-                            if (val.length > 3 && !val.match(/^\d+$/) && !val.includes(":") && !val.match(/^[А-ЯЁ][а-яё]+\s[А-ЯЁ]\.[А-ЯЁ]\./)) {
-                                subject = val; 
-                                break;
-                            }
+                    for (let text of [...new Set(texts)]) {
+                        if (teacherRegex.test(text)) { if (!teacher) teacher = text; }
+                        else if (timeRegex.test(text)) { /* skip */ }
+                        else if (text === lessonNum) { /* skip */ }
+                        else if (text.match(/^[0-9]{1,4}[а-яА-Яa-zA-Z]?$/) || text.match(/^[0-9]{1,3}[\/\\\\][0-9]$/) || text.toLowerCase().includes("зал") || text.toLowerCase().includes("ауд") || text.toLowerCase().includes("спорт")) {
+                            if (!room) room = text;
+                        } else {
+                            if (text.length >= 2 && (!subject || text.length > subject.length)) subject = text;
                         }
                     }
 
-                    // Ищем препода и кабинет во всей строке
-                    rawData[r].forEach(cell => {
-                        if (typeof cell !== 'string') return;
-                        let val = cell.trim();
-                        if (val === subject || val === time || val === lessonNum || val === groupName) return;
-                        if (val.match(/^[А-ЯЁ][а-яё]+\s[А-ЯЁ]\.[А-ЯЁ]\./)) teacher = val;
-                        if (val.match(/^\d{1,3}[а-яА-Я]?$/) && val !== lessonNum) room = val;
-                    });
-
-                    if (subject && subject.length > 1) {
-                        lessons.push({ num: lessonNum, time, subject, teacher, room });
+                    if (subject) {
+                        lessons.push({ num: lessonNum, time: finalTimes, subject, teacher, room });
                     }
+                    
+                    // Пропускаем следующую строку, если мы её уже прочитали
+                    if (!isNextRowNewPair && time2) r++; 
                 }
             }
             return lessons;
@@ -304,7 +313,6 @@
 
         function renderLessons(lessons) {
             const content = document.getElementById('content');
-            
             if (lessons.length === 0) {
                 content.innerHTML = '<div class="loader">🎉 Пар нет!</div>';
                 return;
@@ -322,7 +330,7 @@
                 card.innerHTML = `
                     <div class="lesson-time-block">
                         <div class="lesson-num">${l.num || '•'}</div>
-                        <div class="lesson-time">${l.time.split('-')[0].trim()}</div>
+                        <div class="lesson-time">${l.time.split('\n')[0].split('-')[0].trim()}</div>
                     </div>
                     <div class="lesson-info">
                         <div class="lesson-subject">${l.subject}</div>
