@@ -31,9 +31,17 @@ function switchTab(tab) {
     document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
     document.getElementById(`nav-${tab}`).classList.add('active');
     
-    // Скрываем/показываем элементы шапки
-    document.getElementById('group-select').style.display = tab === 'schedule' ? 'block' : 'none';
-    document.getElementById('view-toggle').style.display = tab === 'schedule' ? 'inline' : 'none';
+    // Управляем видимостью элементов шапки
+    const groupSelect = document.getElementById('group-select');
+    const viewToggle = document.getElementById('view-toggle');
+    
+    if (tab === 'schedule') {
+        groupSelect.style.display = groupsList.length > 0 ? 'block' : 'none';
+        viewToggle.style.display = 'inline-block';
+    } else {
+        groupSelect.style.display = 'none';
+        viewToggle.style.display = 'none';
+    }
 
     renderCurrentTab();
 }
@@ -67,12 +75,12 @@ async function loadAllSchedules() {
             }
         }
 
-        if (excelUrls.length === 0) throw new Error("Файлы не найдены");
+        if (excelUrls.length === 0) throw new Error("Файлы не найдены на сайте.");
         
         let count = 0;
         for (let url of excelUrls) {
             count++;
-            document.getElementById('content').innerHTML = `<div class="loader">Загрузка (${count}/${excelUrls.length})...</div>`;
+            document.getElementById('content').innerHTML = `<div class="loader">Загрузка файла (${count}/${excelUrls.length})...</div>`;
             try {
                 const fileRes = await fetch(PROXY + encodeURIComponent(url));
                 const arrayBuffer = await fileRes.arrayBuffer();
@@ -80,7 +88,7 @@ async function loadAllSchedules() {
             } catch (e) { console.warn("Ошибка файла: " + url, e); }
         }
 
-        if (groupsList.length === 0) throw new Error("Группы не найдены");
+        if (groupsList.length === 0) throw new Error("Группы не найдены в файлах.");
 
         groupsList.sort((a, b) => a.course - b.course || a.name.localeCompare(b.name));
         populateGroupSelector();
@@ -94,7 +102,7 @@ async function loadAllSchedules() {
             }
         }
         
-        switchTab('schedule'); // Открываем вкладку по умолчанию
+        switchTab('schedule'); // Открываем вкладку "Расписание"
 
     } catch (e) {
         console.error(e);
@@ -111,6 +119,7 @@ function parseAndAddFile(arrayBuffer) {
         rawData.forEach((row, rowIndex) => {
             row.forEach((cell, colIndex) => {
                 if (typeof cell === 'string' && cell.trim().length > 2) {
+                    // Более строгий поиск групп: 3 цифры + пробел + 2-4 буквы
                     if (/^\d{3}\s+[А-ЯЁA-Z]{2,4}/.test(cell.trim())) {
                         let groupName = cell.trim();
                         if (!groupsDatabase[groupName]) {
@@ -156,12 +165,13 @@ function populateGroupSelector() {
         opt.textContent = g.name;
         optgroup.appendChild(opt);
     });
-}
 
-function changeGroup(val) {
-    selectedGroupIndex = parseInt(val);
-    localStorage.setItem('selectedGroupName', groupsList[selectedGroupIndex].name);
-    renderSchedule();
+    select.style.display = 'block'; // Показываем селектор
+    select.onchange = (e) => {
+        selectedGroupIndex = parseInt(e.target.value);
+        localStorage.setItem('selectedGroupName', groupsList[selectedGroupIndex].name);
+        renderSchedule(); 
+    };
 }
 
 // --- РЕНДЕРИНГ ---
@@ -190,6 +200,7 @@ function renderSchedule() {
         let displayDayName = days[todayIdx];
         let isToday = true;
         
+        // Если на сегодня пар нет, показываем завтрашние
         if (todayLessons.length === 0) {
             let tomorrowLessons = findLessons(data.rawData, data.rowIndex, data.colIndex, days[tomorrowIdx]);
             if (tomorrowLessons.length > 0) {
@@ -200,17 +211,18 @@ function renderSchedule() {
         }
 
         if (displayLessons.length === 0) {
-            content.innerHTML = '<div class="empty-msg">Занятий нет</div>';
+            content.innerHTML = '<div class="empty-msg">Занятий нет 🎉</div>';
             return;
         }
 
         const dayBlock = document.createElement('div');
         dayBlock.className = 'day-block';
         dayBlock.innerHTML = `<div class="day-title ${isToday ? 'today' : ''}">${displayDayName}</div>`;
-        displayLessons.forEach(l => dayBlock.appendChild(createLessonCard(l, isToday)));
+        displayLessons.forEach((l, idx) => dayBlock.appendChild(createLessonCard(l, isToday, idx)));
         content.appendChild(dayBlock);
 
     } else {
+        // Режим "Неделя"
         const daysOrder = ["ПОНЕДЕЛЬНИК", "ВТОРНИК", "СРЕДА", "ЧЕТВЕРГ", "ПЯТНИЦА", "СУББОТА"];
         const todayName = ["ВОСКРЕСЕНЬЕ", "ПОНЕДЕЛЬНИК", "ВТОРНИК", "СРЕДА", "ЧЕТВЕРГ", "ПЯТНИЦА", "СУББОТА"][new Date().getDay()];
         
@@ -223,7 +235,7 @@ function renderSchedule() {
                 const dayBlock = document.createElement('div');
                 dayBlock.className = 'day-block';
                 dayBlock.innerHTML = `<div class="day-title ${isToday ? 'today' : ''}">${dayName}</div>`;
-                lessons.forEach(l => dayBlock.appendChild(createLessonCard(l, isToday)));
+                lessons.forEach((l, idx) => dayBlock.appendChild(createLessonCard(l, isToday, idx)));
                 content.appendChild(dayBlock);
             }
         });
@@ -232,13 +244,15 @@ function renderSchedule() {
     }
 }
 
-function createLessonCard(l, isToday) {
+function createLessonCard(l, isToday, idx) {
     const card = document.createElement('div');
     card.className = `lesson-card ${isToday ? 'today' : ''}`;
     
-    // Проверяем посещаемость
+    // Уникальный ID для отметки посещаемости
     const dateStr = getTodayString();
-    const record = attendanceData[`${dateStr}_${l.subject}`];
+    const uniqueId = `${dateStr}_${l.subject}_${l.time}_${l.num}`;
+    const record = attendanceData[uniqueId];
+    
     let statusIcon = '⚪';
     let statusColor = 'var(--text-muted)';
     if (record === 'present') { statusIcon = '✅'; statusColor = 'var(--success)'; }
@@ -249,6 +263,7 @@ function createLessonCard(l, isToday) {
     if (l.teacher) metaHtml += `<span>${l.teacher}</span>`;
     if (l.room) metaHtml += `<span class="room-badge">ауд. ${l.room}</span>`;
 
+    // Берем только начало времени для компактности
     let displayTime = l.time.split('/')[0].trim();
 
     card.innerHTML = `
@@ -260,7 +275,7 @@ function createLessonCard(l, isToday) {
             <div class="lesson-subject">${l.subject}</div>
             <div class="lesson-meta">${metaHtml}</div>
         </div>
-        ${isToday ? `<button class="attendance-btn" style="color: ${statusColor}" onclick="markAttendance('${l.subject}', '${l.num}')">${statusIcon}</button>` : ''}
+        ${isToday ? `<button class="attendance-btn" style="color: ${statusColor}" onclick="markAttendance('${uniqueId}')">${statusIcon}</button>` : ''}
     `;
     return card;
 }
@@ -271,20 +286,17 @@ function getTodayString() {
     return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`;
 }
 
-function markAttendance(subject, num) {
-    const dateStr = getTodayString();
-    const key = `${dateStr}_${subject}`;
-    
+function markAttendance(uniqueId) {
     const statuses = ['present', 'half', 'absent', null];
-    let current = attendanceData[key] || null;
+    let current = attendanceData[uniqueId] || null;
     let nextIndex = (statuses.indexOf(current) + 1) % statuses.length;
     let nextStatus = statuses[nextIndex];
     
-    if (nextStatus) attendanceData[key] = nextStatus;
-    else delete attendanceData[key];
+    if (nextStatus) attendanceData[uniqueId] = nextStatus;
+    else delete attendanceData[uniqueId];
     
     localStorage.setItem('attendance', JSON.stringify(attendanceData));
-    renderSchedule(); // Перерисовываем
+    renderSchedule(); // Перерисовываем, чтобы обновить иконку
 }
 
 function renderAttendance() {
@@ -293,9 +305,14 @@ function renderAttendance() {
     
     const stats = {};
     for (const [key, status] of Object.entries(attendanceData)) {
-        const subject = key.split('_')[1];
+        // Ключ имеет вид: "dd.mm.yyyy_Предмет_Время_Номер"
+        const parts = key.split('_');
+        if (parts.length < 2) continue;
+        const subject = parts[1];
+        
         if (!stats[subject]) stats[subject] = { present: 0, total: 0 };
         stats[subject].total++;
+        
         if (status === 'present') stats[subject].present += 1;
         else if (status === 'half') stats[subject].present += 0.5;
     }
@@ -359,7 +376,7 @@ function renderSettings() {
             <div class="settings-title">О приложении</div>
             <div class="settings-row">
                 <span>Версия</span>
-                <span>Web 1.0</span>
+                <span>Web 1.1</span>
             </div>
             <div class="settings-row">
                 <span>Разработчик</span>
@@ -369,7 +386,7 @@ function renderSettings() {
     `;
 }
 
-// --- ЛОГИКА ПОИСКА (КАК В ANDROID) ---
+// --- УЛУЧШЕННЫЙ ПАРСЕР EXCEL ---
 function findLessons(rawData, startRow, groupCol, targetDayName) {
     let lessons = [];
     let isCurrentDay = false;
@@ -381,17 +398,19 @@ function findLessons(rawData, startRow, groupCol, targetDayName) {
     for (let r = startRow; r < rawData.length; r++) {
         if (!rawData[r]) continue;
         
+        // Ищем название дня в первых 4 колонках
         let rowString = rawData[r].slice(0, 4).map(c => typeof c === 'string' ? c : '').join(" ").toUpperCase();
         let foundDay = daysArr.find(d => rowString.includes(d));
         
         if (foundDay) {
-            if (isCurrentDay) break;
+            if (isCurrentDay) break; // Если мы уже прошли нужный день, останавливаемся
             isCurrentDay = (foundDay === targetDayName);
             continue;
         }
 
         if (!isCurrentDay) continue;
 
+        // Ищем время пары
         let time1 = "";
         let num1 = "";
         for(let c=1; c<5; c++) {
@@ -399,6 +418,7 @@ function findLessons(rawData, startRow, groupCol, targetDayName) {
             if (typeof cell === 'string') {
                 let match = cell.match(timeRegex);
                 if (match) time1 = match[0];
+                // Ищем строго цифры от 1 до 99 (номер пары)
                 if (cell.match(/^\d{1,2}$/)) num1 = cell;
             }
         }
@@ -408,6 +428,7 @@ function findLessons(rawData, startRow, groupCol, targetDayName) {
             let num2 = "";
             let nextRowIsDay = false;
             
+            // Проверяем следующую строку на наличие второй части пары
             if (r + 1 < rawData.length) {
                 let nextRowStr = rawData[r + 1].slice(0, 4).map(c => typeof c === 'string' ? c : '').join(" ").toUpperCase();
                 nextRowIsDay = daysArr.some(d => nextRowStr.includes(d));
@@ -429,8 +450,15 @@ function findLessons(rawData, startRow, groupCol, targetDayName) {
             if (!isNextRowNewPair && time2 && time2 !== time1) finalTimes = time1 + " / " + time2;
 
             let lessonNum = num1 || num2;
+            
+            // Если номер пары не найден, пытаемся взять его из первой колонки (индекс 0)
+            if (!lessonNum && rawData[r][0] && String(rawData[r][0]).match(/^\d{1,2}$/)) {
+                lessonNum = String(rawData[r][0]).trim();
+            }
+
             let rowsToScan = isNextRowNewPair ? [r] : [r, r+1];
             
+            // Собираем текст из ячеек группы и соседних колонок
             let texts = [];
             for (let row of rowsToScan) {
                 if (row >= rawData.length) continue;
@@ -443,8 +471,8 @@ function findLessons(rawData, startRow, groupCol, targetDayName) {
 
             for (let text of [...new Set(texts)]) {
                 if (teacherRegex.test(text)) { if (!teacher) teacher = text; }
-                else if (timeRegex.test(text)) { }
-                else if (text === lessonNum) { }
+                else if (timeRegex.test(text)) { /* пропускаем время */ }
+                else if (text === lessonNum) { /* пропускаем номер пары */ }
                 else if (text.match(/^[0-9]{1,4}[а-яА-Яa-zA-Z]?$/) || text.match(/^[0-9]{1,3}[\/\\\\][0-9]$/) || text.toLowerCase().includes("зал") || text.toLowerCase().includes("ауд") || text.toLowerCase().includes("спорт")) {
                     if (!room) room = text;
                 } else {
@@ -454,6 +482,7 @@ function findLessons(rawData, startRow, groupCol, targetDayName) {
 
             if (subject) lessons.push({ num: lessonNum, time: finalTimes, subject, teacher, room });
             
+            // Пропускаем следующую строку, если мы её уже прочитали как продолжение пары
             if (!isNextRowNewPair && time2) r++; 
         }
     }
