@@ -1,4 +1,4 @@
-/* Расписание НПК — style.css v3.0 (Material-стиль: карточки, чипы, модалки) */
+/* Расписание НПК — style.css v4.0 */
 
 :root {
     --bg: #1C1B1F; --surface: #2A2A2E; --surface-2: #35353A; --text: #E6E1E5;
@@ -28,12 +28,19 @@ body {
     overflow: hidden;
 }
 
+/* Скроллбары в палитре приложения */
+.content, .groups-row, .modal { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+.content::-webkit-scrollbar, .groups-row::-webkit-scrollbar, .modal::-webkit-scrollbar { width: 8px; height: 8px; }
+.content::-webkit-scrollbar-track, .groups-row::-webkit-scrollbar-track, .modal::-webkit-scrollbar-track { background: transparent; }
+.content::-webkit-scrollbar-thumb, .groups-row::-webkit-scrollbar-thumb, .modal::-webkit-scrollbar-thumb { background: var(--border); border-radius: 8px; }
+.content::-webkit-scrollbar-thumb:hover, .groups-row::-webkit-scrollbar-thumb:hover, .modal::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
 /* Шапка */
 .header {
     padding: 15px 20px 12px;
     padding-top: calc(15px + env(safe-area-inset-top));
     background: var(--bg);
-    display: flex; flex-direction: column; gap: 10px;
+    display: flex; flex-direction: column; gap: 8px;
     z-index: 10; border-bottom: 1px solid var(--border);
 }
 .header-top { display: flex; justify-content: space-between; align-items: center; }
@@ -67,14 +74,33 @@ body {
 .banner .btn { flex-shrink: 0; }
 .banner-retry { white-space: nowrap; }
 
-/* Чипы курсов (сетка кнопок, как на скриншоте) */
+/* Чипы курсов */
 .chips-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
 .course-chip {
     background: var(--surface); border: 1px solid var(--border); color: var(--text);
     padding: 16px 10px; border-radius: 14px; font-size: 15px; font-weight: 600;
     cursor: pointer; text-align: center;
+    transition: background .15s, border-color .15s, transform .1s;
 }
+.course-chip:active { transform: scale(.97); }
 .course-chip.active { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+
+/* Список групп выбранного курса */
+.groups-row {
+    position: relative; display: flex; gap: 8px; overflow-x: auto;
+    padding: 2px 2px 10px; margin-bottom: 12px;
+    scroll-snap-type: x proximity;
+}
+.group-pill {
+    flex-shrink: 0; scroll-snap-align: center;
+    background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    padding: 10px 16px; border-radius: 999px; font-size: 13px; font-weight: 600;
+    cursor: pointer; white-space: nowrap;
+    transition: background .15s, border-color .15s, transform .1s;
+}
+.group-pill:active { transform: scale(.96); }
+.group-pill.active { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.groups-empty { color: var(--text-muted); font-size: 13px; padding: 8px 2px; }
 
 /* Поиск */
 .search-row { margin-bottom: 14px; }
@@ -89,6 +115,7 @@ body {
 .day-block { margin-bottom: 20px; }
 .day-title { font-size: 15px; color: var(--accent); margin-bottom: 10px; font-weight: bold; text-transform: uppercase; }
 .day-title.today { color: var(--success); }
+.day-date { color: var(--text-muted); font-weight: 600; font-size: 12px; }
 
 .lesson-card {
     background: var(--surface); border-radius: 14px; padding: 14px; margin-bottom: 10px;
@@ -104,6 +131,7 @@ body {
 .lesson-info { flex: 1; min-width: 0; }
 .lesson-subject { font-size: 15px; font-weight: 600; margin-bottom: 3px; overflow-wrap: anywhere; }
 .lesson-meta { font-size: 12px; color: var(--text-muted); display: flex; flex-wrap: wrap; gap: 6px; }
+.lesson-teacher { display: inline-flex; align-items: center; gap: 4px; }
 
 .room-badge {
     background: var(--surface-2); padding: 8px 10px; border-radius: 10px;
@@ -143,7 +171,7 @@ body {
 .status-item:active, .status-item.selected { background: var(--surface); }
 .status-ico { font-size: 17px; width: 22px; text-align: center; }
 
-/* Статистика посещаемости — текст слева, процент справа */
+/* Статистика посещаемости */
 .stats-card {
     background: var(--surface); border-radius: 14px; padding: 14px; margin-bottom: 10px;
     border-left: 4px solid var(--accent);
@@ -169,7 +197,7 @@ body {
     border-radius: 8px; padding: 8px; font-size: 14px; text-align: right;
 }
 
-/* Модальные окна (Настройки / Звонки) */
+/* Модальные окна */
 .modal-overlay {
     position: fixed; inset: 0; z-index: 200; background: var(--overlay);
     display: flex; align-items: center; justify-content: center; padding: 20px;
@@ -191,6 +219,12 @@ body {
 }
 .modal-btn.primary { background: var(--accent); color: var(--on-accent); }
 
+/* Подтверждение отметки за другой день */
+.confirm-card { background: var(--surface-2); border: 1px solid var(--border); border-radius: 14px; padding: 14px; margin-bottom: 12px; }
+.confirm-date { font-size: 12px; color: var(--text-muted); font-weight: 600; margin-bottom: 6px; }
+.confirm-lesson { font-size: 16px; font-weight: 700; margin-bottom: 8px; overflow-wrap: anywhere; }
+.confirm-status { font-size: 14px; font-weight: 600; color: var(--accent); }
+
 /* Радио-темы */
 .theme-option {
     display: flex; align-items: center; gap: 12px; padding: 14px 12px;
@@ -201,10 +235,7 @@ body {
 .theme-ico { font-size: 18px; }
 
 /* Звонки */
-.bell-row {
-    display: flex; align-items: center; gap: 14px; padding: 12px 0;
-    border-bottom: 1px solid var(--border);
-}
+.bell-row { display: flex; align-items: center; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--border); }
 .bell-row:last-of-type { border-bottom: none; }
 .bell-num {
     width: 36px; height: 36px; border-radius: 10px; background: var(--surface-2);
