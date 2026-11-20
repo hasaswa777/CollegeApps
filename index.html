@@ -44,16 +44,18 @@
         .lesson-card { background: var(--surface); border-radius: 12px; padding: 12px; margin-bottom: 10px; display: flex; gap: 12px; border-left: 4px solid var(--accent); align-items: center; }
         .lesson-card.today { border-left-color: var(--success); }
         
-        .lesson-time-block { display: flex; flex-direction: column; min-width: 50px; justify-content: center; }
+        /* Блок времени: фиксированная ширина, не сжимается и не растягивается */
+        .lesson-time-block { display: flex; flex-direction: column; width: 58px; min-width: 58px; max-width: 58px; flex-shrink: 0; justify-content: center; text-align: center; }
         .lesson-num { font-size: 18px; font-weight: 800; color: var(--accent); line-height: 1; }
-        .lesson-time { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+        .lesson-time { font-size: 11px; color: var(--text-muted); margin-top: 2px; white-space: normal; word-break: break-word; }
         
-        .lesson-info { flex: 1; }
-        .lesson-subject { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
-        .lesson-meta { font-size: 12px; color: var(--text-muted); display: flex; flex-wrap: wrap; gap: 6px; }
-        .room-badge { background: var(--bg); padding: 2px 6px; border-radius: 4px; color: var(--accent); font-weight: bold; font-size: 11px; }
+        /* Инфо-блок занимает всё оставшееся место, текст не прижимается влево-вверх */
+        .lesson-info { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+        .lesson-subject { font-size: 15px; font-weight: 600; margin-bottom: 2px; line-height: 1.3; overflow-wrap: anywhere; }
+        .lesson-meta { font-size: 12px; color: var(--text-muted); display: flex; flex-wrap: wrap; gap: 6px; line-height: 1.4; }
+        .room-badge { background: var(--bg); padding: 2px 6px; border-radius: 4px; color: var(--accent); font-weight: bold; font-size: 11px; white-space: nowrap; }
         
-        .attendance-btn { background: none; border: none; font-size: 20px; cursor: pointer; padding: 4px; margin-left: 8px; }
+        .attendance-btn { background: none; border: none; font-size: 20px; cursor: pointer; padding: 4px; margin-left: 8px; flex-shrink: 0; align-self: center; }
         
         .settings-group { background: var(--surface); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
         .settings-title { font-size: 16px; font-weight: bold; margin-bottom: 12px; }
