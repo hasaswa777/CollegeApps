@@ -1,6 +1,6 @@
-/* Расписание НПК — Service Worker v4 */
+/* Расписание НПК — Service Worker v5 */
 
-const CACHE = 'college-cache-v4';
+const CACHE = 'college-cache-v5';
 const PRECACHE = [
     './',
     './index.html',
