@@ -1,14 +1,12 @@
-// Константы
 const SITE_URL = 'https://politech-nsk.ru/index.php/studentam';
 const BASE_URL = 'https://politech-nsk.ru';
 const PROXY = 'https://schedule-proxy.ivanushca99.workers.dev/?url=';
 
-// Состояние
 let groupsDatabase = {}; 
 let groupsList = [];
 let selectedGroupIndex = 0;
-let currentViewMode = 'day'; // 'day' или 'week'
-let currentTab = 'schedule'; // 'schedule', 'attendance', 'settings'
+let currentViewMode = 'day';
+let currentTab = 'schedule';
 let attendanceData = JSON.parse(localStorage.getItem('attendance')) || {};
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -16,15 +14,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (/iPad|iPhone|iPod/.test(navigator.userAgent)) {
         document.getElementById('ios-hint').style.display = 'block';
     }
-    
     if (localStorage.getItem('theme') === 'light') {
         document.body.classList.add('light');
     }
-    
     loadAllSchedules();
 });
 
-// --- НАВИГАЦИЯ ---
 function switchTab(tab) {
     currentTab = tab;
     document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
@@ -55,7 +50,6 @@ function toggleView() {
     renderSchedule();
 }
 
-// --- ЗАГРУЗКА ДАННЫХ ---
 async function loadAllSchedules() {
     try {
         const response = await fetch(PROXY + encodeURIComponent(SITE_URL));
@@ -73,7 +67,12 @@ async function loadAllSchedules() {
             }
         }
 
-        if (excelUrls.length === 0) throw new Error("Файлы не найдены на сайте.");
+        // Если сайт не отвечает или файлы не найдены — включаем демо-режим
+        if (excelUrls.length === 0) {
+            console.warn("Файлы не найдены. Включаем демо-режим.");
+            enableDemoMode();
+            return;
+        }
         
         let count = 0;
         for (let url of excelUrls) {
@@ -86,7 +85,10 @@ async function loadAllSchedules() {
             } catch (e) { console.warn("Ошибка файла: " + url, e); }
         }
 
-        if (groupsList.length === 0) throw new Error("Группы не найдены в файлах.");
+        if (groupsList.length === 0) {
+            enableDemoMode();
+            return;
+        }
 
         groupsList.sort((a, b) => a.course - b.course || a.name.localeCompare(b.name));
         populateGroupSelector();
@@ -104,8 +106,28 @@ async function loadAllSchedules() {
 
     } catch (e) {
         console.error(e);
-        document.getElementById('content').innerHTML = `<div class="error">Ошибка: ${e.message}</div>`;
+        enableDemoMode();
     }
+}
+
+// Временная заглушка, если сайт колледжа недоступен
+function enableDemoMode() {
+    groupsList = [{ name: "224 СА (Демо)", course: 2 }];
+    groupsDatabase["224 СА (Демо)"] = {
+        rawData: [
+            ["День", "Пара", "Время", "Группа"],
+            ["ПОНЕДЕЛЬНИК", "1", "8:30 - 9:15", "Демо-предмет"],
+            ["ВТОРНИК", "2", "10:30 - 11:15", "Демо-предмет"]
+        ],
+        rowIndex: 1, colIndex: 3
+    };
+    populateGroupSelector();
+    switchTab('schedule');
+    setTimeout(() => {
+        document.getElementById('content').innerHTML = `
+            <div class="error">Сайт колледжа временно недоступен. Показано демо-расписание.</div>
+        ` + document.getElementById('content').innerHTML;
+    }, 100);
 }
 
 function parseAndAddFile(arrayBuffer) {
@@ -171,7 +193,6 @@ function populateGroupSelector() {
     };
 }
 
-// --- РЕНДЕРИНГ ---
 function renderCurrentTab() {
     if (currentTab === 'schedule') renderSchedule();
     else if (currentTab === 'attendance') renderAttendance();
@@ -257,7 +278,6 @@ function createLessonCard(l, isToday, idx) {
     if (l.teacher) metaHtml += `<span>${l.teacher}</span>`;
     if (l.room) metaHtml += `<span class="room-badge">ауд. ${l.room}</span>`;
 
-    // Берем только начало времени для компактности, но с полной подсказкой
     let displayTime = l.time.split('/')[0].trim();
 
     card.innerHTML = `
@@ -274,7 +294,6 @@ function createLessonCard(l, isToday, idx) {
     return card;
 }
 
-// --- ПОСЕЩАЕМОСТЬ ---
 function getTodayString() {
     let d = new Date();
     return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`;
@@ -340,7 +359,6 @@ function renderAttendance() {
     });
 }
 
-// --- НАСТРОЙКИ ---
 function renderSettings() {
     const content = document.getElementById('content');
     content.innerHTML = `
@@ -364,7 +382,6 @@ function renderSettings() {
     `;
 }
 
-// --- УЛУЧШЕННЫЙ ПАРСЕР EXCEL (С РАСШИРЕННЫМ ПОИСКОМ) ---
 function findLessons(rawData, startRow, groupCol, targetDayName) {
     let lessons = [];
     let isCurrentDay = false;
@@ -376,7 +393,6 @@ function findLessons(rawData, startRow, groupCol, targetDayName) {
     for (let r = startRow; r < rawData.length; r++) {
         if (!rawData[r]) continue;
         
-        // Ищем название дня
         let rowString = rawData[r].slice(0, 4).map(c => typeof c === 'string' ? c : '').join(" ").toUpperCase();
         let foundDay = daysArr.find(d => rowString.includes(d));
         
@@ -388,7 +404,7 @@ function findLessons(rawData, startRow, groupCol, targetDayName) {
 
         if (!isCurrentDay) continue;
 
-        // 1. Ищем время пары в первых 6 колонках
+        // Ищем время
         let time1 = "";
         for(let c=0; c<6; c++) {
             let cell = rawData[r][c];
@@ -398,23 +414,22 @@ function findLessons(rawData, startRow, groupCol, targetDayName) {
             }
         }
 
-        if (!time1) continue; // Если нет времени — это не пара, пропускаем
+        if (!time1) continue;
 
-        // 2. Ищем номер пары: сканируем первые 6 колонок и ищем первую цифру от 1 до 9
+        // Ищем номер пары (первая цифра от 1 до 9 в первых 6 колонках)
         let lessonNum = "";
         for (let c=0; c<6; c++) {
             let cell = rawData[r][c];
             if (typeof cell === 'string') {
                 let trimmed = cell.trim();
-                // Если это одиночная цифра от 1 до 9 и это не часть времени
                 if (/^[1-9]$/.test(trimmed) || /^[1-9]\s*пара$/i.test(trimmed)) {
-                    lessonNum = trimmed.replace(/\D/g, ''); // оставляем только цифру
+                    lessonNum = trimmed.replace(/\D/g, '');
                     break;
                 }
             }
         }
 
-        // 3. Проверяем следующую строку на вторую половину пары
+        // Проверяем вторую половину
         let time2 = "";
         let nextRowIsDay = false;
         
@@ -434,7 +449,6 @@ function findLessons(rawData, startRow, groupCol, targetDayName) {
                     }
                 }
                 
-                // Если в следующей строке нет номера пары — это продолжение
                 if (!nextHasNum) {
                     for(let c=0; c<6; c++) {
                         let cell = rawData[r+1][c];
@@ -452,7 +466,6 @@ function findLessons(rawData, startRow, groupCol, targetDayName) {
 
         let rowsToScan = time2 ? [r, r+1] : [r];
         
-        // Собираем текст из колонок группы
         let texts = [];
         for (let row of rowsToScan) {
             if (row >= rawData.length) continue;
