@@ -279,7 +279,7 @@ function createLessonCard(l, isToday, idx) {
     card.innerHTML = `
         <div class="lesson-time-block">
             <div class="lesson-num">${l.num || '•'}</div>
-            <div class="lesson-time" style="white-space: pre-wrap; font-size: 10px;">${l.time}</div>
+            <div class="lesson-time" style="white-space: normal; word-break: break-word; font-size: 10px;">${l.time}</div>
         </div>
         <div class="lesson-info">
             <div class="lesson-subject">${l.subject}</div>
