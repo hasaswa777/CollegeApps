@@ -275,11 +275,11 @@ function createLessonCard(l, isToday, idx) {
     if (l.teacher) metaHtml += `<span>${l.teacher}</span>`;
     if (l.room) metaHtml += `<span class="room-badge">ауд. ${l.room}</span>`;
 
-    // Убираем обрезку времени, выводим полностью. Если слишком длинно — CSS перенесет
+    // Время выводится как есть; перенос и ширина регулируются CSS (без inline-стилей)
     card.innerHTML = `
         <div class="lesson-time-block">
             <div class="lesson-num">${l.num || '•'}</div>
-            <div class="lesson-time" style="white-space: normal; word-break: break-word; font-size: 10px;">${l.time}</div>
+            <div class="lesson-time">${l.time}</div>
         </div>
         <div class="lesson-info">
             <div class="lesson-subject">${l.subject}</div>

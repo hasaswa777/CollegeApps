@@ -1,4 +1,13 @@
-const CACHE_NAME = 'schedule-cache-v1';
+const CACHE_NAME = 'schedule-cache-v2';
+
+// При активации новой версии удаляем старые кэши, чтобы пользователи сразу получили свежий код
+self.addEventListener('activate', event => {
+  event.waitUntil(
+    caches.keys().then(keys => Promise.all(
+      keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))
+    ))
+  );
+});
 const urlsToCache = [
   '/CollegeApps/',
   '/CollegeApps/index.html',
