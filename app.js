@@ -1,3 +1,4 @@
+// Маскируем ссылки
 const SITE_URL = 'https://' + 'politech-nsk.ru/index.php/studentam';
 const BASE_URL = 'https://' + 'politech-nsk.ru';
 const PROXY = 'https://' + 'schedule-proxy.ivanushca99.workers.dev/?url=';
@@ -5,6 +6,7 @@ const PROXY = 'https://' + 'schedule-proxy.ivanushca99.workers.dev/?url=';
 let groupsDatabase = {}; 
 let groupsList = [];
 let selectedGroupIndex = 0;
+let currentViewMode = 'day'; // 'day' или 'week'
 
 document.addEventListener('DOMContentLoaded', () => {
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
@@ -14,6 +16,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     loadAllSchedules();
 });
+
+function toggleView() {
+    currentViewMode = currentViewMode === 'day' ? 'week' : 'day';
+    document.getElementById('view-toggle').textContent = currentViewMode === 'day' ? 'На неделю' : 'На сегодня';
+    renderSchedule();
+}
+
+function changeGroup(val) {
+    selectedGroupIndex = parseInt(val);
+    localStorage.setItem('selectedGroupName', groupsList[selectedGroupIndex].name);
+    renderSchedule();
+}
 
 async function loadAllSchedules() {
     try {
@@ -32,12 +46,12 @@ async function loadAllSchedules() {
             }
         }
 
-        if (excelUrls.length === 0) throw new Error("Файлы не найдены");
+        if (excelUrls.length === 0) throw new Error("Файлы не найдены на сайте");
         
         let count = 0;
         for (let url of excelUrls) {
             count++;
-            document.getElementById('content').innerHTML = `<div class="loader">⏳ Загрузка (${count}/${excelUrls.length})...</div>`;
+            document.getElementById('content').innerHTML = `<div class="loader">Загрузка файла (${count}/${excelUrls.length})...</div>`;
             try {
                 const fileRes = await fetch(PROXY + encodeURIComponent(url));
                 const arrayBuffer = await fileRes.arrayBuffer();
@@ -45,7 +59,7 @@ async function loadAllSchedules() {
             } catch (e) { console.warn("Ошибка файла: " + url, e); }
         }
 
-        if (groupsList.length === 0) throw new Error("Группы не найдены");
+        if (groupsList.length === 0) throw new Error("Группы не найдены в файлах");
 
         groupsList.sort((a, b) => a.course - b.course || a.name.localeCompare(b.name));
         populateGroupSelector();
@@ -62,7 +76,7 @@ async function loadAllSchedules() {
 
     } catch (e) {
         console.error(e);
-        showError("Ошибка загрузки. Проверьте интернет.");
+        showError("Ошибка загрузки данных. Проверьте интернет.");
     }
 }
 
@@ -122,11 +136,6 @@ function populateGroupSelector() {
     });
 
     select.style.display = 'block';
-    select.onchange = (e) => {
-        selectedGroupIndex = parseInt(e.target.value);
-        localStorage.setItem('selectedGroupName', groupsList[selectedGroupIndex].name);
-        renderSchedule(); 
-    };
 }
 
 function renderSchedule() {
@@ -135,27 +144,88 @@ function renderSchedule() {
     const data = groupsDatabase[group.name];
     if (!data) return;
 
-    const days = ["ВОСКРЕСЕНЬЕ", "ПОНЕДЕЛЬНИК", "ВТОРНИК", "СРЕДА", "ЧЕТВЕРГ", "ПЯТНИЦА", "СУББОТА"];
-    let todayIdx = new Date().getDay();
-    let tomorrowIdx = (todayIdx + 1) % 7;
-    
-    let todayLessons = findLessons(data.rawData, data.rowIndex, data.colIndex, days[todayIdx]);
-    let displayLessons = todayLessons;
-    let displayDayName = days[todayIdx];
-    
-    if (todayLessons.length === 0) {
-        let tomorrowLessons = findLessons(data.rawData, data.rowIndex, data.colIndex, days[tomorrowIdx]);
-        if (tomorrowLessons.length > 0) {
-            displayLessons = tomorrowLessons;
-            displayDayName = days[tomorrowIdx] + " (Завтра)";
+    const content = document.getElementById('content');
+    content.innerHTML = '';
+
+    if (currentViewMode === 'day') {
+        const days = ["ВОСКРЕСЕНЬЕ", "ПОНЕДЕЛЬНИК", "ВТОРНИК", "СРЕДА", "ЧЕТВЕРГ", "ПЯТНИЦА", "СУББОТА"];
+        let todayIdx = new Date().getDay();
+        let tomorrowIdx = (todayIdx + 1) % 7;
+        
+        let todayLessons = findLessons(data.rawData, data.rowIndex, data.colIndex, days[todayIdx]);
+        let displayLessons = todayLessons;
+        let displayDayName = days[todayIdx];
+        let isToday = true;
+        
+        if (todayLessons.length === 0) {
+            let tomorrowLessons = findLessons(data.rawData, data.rowIndex, data.colIndex, days[tomorrowIdx]);
+            if (tomorrowLessons.length > 0) {
+                displayLessons = tomorrowLessons;
+                displayDayName = days[tomorrowIdx] + " (Завтра)";
+                isToday = false;
+            }
+        }
+
+        if (displayLessons.length === 0) {
+            content.innerHTML = '<div class="empty-msg">Занятий нет. Отдыхай!</div>';
+            return;
+        }
+
+        const dayBlock = document.createElement('div');
+        dayBlock.className = 'day-block';
+        dayBlock.innerHTML = `<div class="day-title ${isToday ? 'today' : ''}">${displayDayName}</div>`;
+        displayLessons.forEach(l => dayBlock.appendChild(createLessonCard(l, isToday)));
+        content.appendChild(dayBlock);
+
+    } else {
+        // Режим "Неделя"
+        const daysOrder = ["ПОНЕДЕЛЬНИК", "ВТОРНИК", "СРЕДА", "ЧЕТВЕРГ", "ПЯТНИЦА", "СУББОТА"];
+        const todayName = ["ВОСКРЕСЕНЬЕ", "ПОНЕДЕЛЬНИК", "ВТОРНИК", "СРЕДА", "ЧЕТВЕРГ", "ПЯТНИЦА", "СУББОТА"][new Date().getDay()];
+        
+        let hasAny = false;
+        daysOrder.forEach(dayName => {
+            const lessons = findLessons(data.rawData, data.rowIndex, data.colIndex, dayName);
+            if (lessons.length > 0) {
+                hasAny = true;
+                const isToday = dayName === todayName;
+                const dayBlock = document.createElement('div');
+                dayBlock.className = 'day-block';
+                dayBlock.innerHTML = `<div class="day-title ${isToday ? 'today' : ''}">${dayName}</div>`;
+                lessons.forEach(l => dayBlock.appendChild(createLessonCard(l, isToday)));
+                content.appendChild(dayBlock);
+            }
+        });
+
+        if (!hasAny) {
+            content.innerHTML = '<div class="empty-msg">На эту неделю занятий нет.</div>';
         }
     }
-
-    document.getElementById('day-title').textContent = displayDayName;
-    renderLessons(displayLessons);
 }
 
-// --- НОВАЯ ЛОГИКА ПОИСКА (КАК В ANDROID) ---
+function createLessonCard(l, isToday) {
+    const card = document.createElement('div');
+    card.className = `lesson-card ${isToday ? 'today' : ''}`;
+    
+    let metaHtml = '';
+    if (l.teacher) metaHtml += `<span>${l.teacher}</span>`;
+    if (l.room) metaHtml += `<span class="room-badge">ауд. ${l.room}</span>`;
+
+    let displayTime = l.time.split('/')[0].split('-')[0].trim();
+
+    card.innerHTML = `
+        <div class="lesson-time-block">
+            <div class="lesson-num">${l.num || '•'}</div>
+            <div class="lesson-time">${displayTime}</div>
+        </div>
+        <div class="lesson-info">
+            <div class="lesson-subject">${l.subject}</div>
+            <div class="lesson-meta">${metaHtml}</div>
+        </div>
+    `;
+    return card;
+}
+
+// --- ЛОГИКА ПОИСКА (КАК В ANDROID) ---
 function findLessons(rawData, startRow, groupCol, targetDayName) {
     let lessons = [];
     let isCurrentDay = false;
@@ -167,7 +237,6 @@ function findLessons(rawData, startRow, groupCol, targetDayName) {
     for (let r = startRow; r < rawData.length; r++) {
         if (!rawData[r]) continue;
         
-        // Ищем название дня в первых 4 колонках
         let rowString = rawData[r].slice(0, 4).map(c => typeof c === 'string' ? c : '').join(" ").toUpperCase();
         let foundDay = daysArr.find(d => rowString.includes(d));
         
@@ -179,7 +248,6 @@ function findLessons(rawData, startRow, groupCol, targetDayName) {
 
         if (!isCurrentDay) continue;
 
-        // Ищем время в первой строке пары
         let time1 = "";
         let num1 = "";
         for(let c=1; c<5; c++) {
@@ -192,7 +260,6 @@ function findLessons(rawData, startRow, groupCol, targetDayName) {
         }
 
         if (time1) {
-            // Проверяем следующую строку (вдруг там вторая часть времени или номер пары)
             let time2 = "";
             let num2 = "";
             let nextRowIsDay = false;
@@ -216,7 +283,7 @@ function findLessons(rawData, startRow, groupCol, targetDayName) {
             let isNextRowNewPair = num2 && num2.match(/^\d{1,2}$/) && num2 !== num1;
             let finalTimes = time1;
             if (!isNextRowNewPair && time2 && time2 !== time1) {
-                finalTimes = time1 + " / " + time2; // Объединяем время
+                finalTimes = time1 + " / " + time2;
             }
 
             let lessonNum = num1 || num2;
@@ -230,14 +297,12 @@ function findLessons(rawData, startRow, groupCol, targetDayName) {
                 }
             }
 
-            let subject = "";
-            let teacher = "";
-            let room = "";
+            let subject = "", teacher = "", room = "";
 
             for (let text of [...new Set(texts)]) {
                 if (teacherRegex.test(text)) { if (!teacher) teacher = text; }
-                else if (timeRegex.test(text)) { /* skip */ }
-                else if (text === lessonNum) { /* skip */ }
+                else if (timeRegex.test(text)) { }
+                else if (text === lessonNum) { }
                 else if (text.match(/^[0-9]{1,4}[а-яА-Яa-zA-Z]?$/) || text.match(/^[0-9]{1,3}[\/\\\\][0-9]$/) || text.toLowerCase().includes("зал") || text.toLowerCase().includes("ауд") || text.toLowerCase().includes("спорт")) {
                     if (!room) room = text;
                 } else {
@@ -249,44 +314,10 @@ function findLessons(rawData, startRow, groupCol, targetDayName) {
                 lessons.push({ num: lessonNum, time: finalTimes, subject, teacher, room });
             }
             
-            // Пропускаем следующую строку, если мы её уже прочитали
             if (!isNextRowNewPair && time2) r++; 
         }
     }
     return lessons;
-}
-
-function renderLessons(lessons) {
-    const content = document.getElementById('content');
-    if (lessons.length === 0) {
-        content.innerHTML = '<div class="loader">🎉 Пар нет!</div>';
-        return;
-    }
-
-    content.innerHTML = '';
-    lessons.forEach(l => {
-        const card = document.createElement('div');
-        card.className = 'lesson-card';
-        
-        let metaHtml = '';
-        if (l.teacher) metaHtml += `<span>${l.teacher}</span>`;
-        if (l.room) metaHtml += `<span class="room-badge">ауд. ${l.room}</span>`;
-
-        // Отображаем только начало времени для компактности, но с полным тултипом
-        let displayTime = l.time.split('/')[0].split('-')[0].trim();
-
-        card.innerHTML = `
-            <div class="lesson-time-block">
-                <div class="lesson-num">${l.num || '•'}</div>
-                <div class="lesson-time">${displayTime}</div>
-            </div>
-            <div class="lesson-info">
-                <div class="lesson-subject">${l.subject}</div>
-                <div class="lesson-meta">${metaHtml}</div>
-            </div>
-        `;
-        content.appendChild(card);
-    });
 }
 
 function showError(msg) {
