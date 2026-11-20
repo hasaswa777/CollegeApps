@@ -1,16 +1,26 @@
-/* Расписание НПК — app.js v2.1 */
+/* Расписание НПК — app.js v3.0 */
 
 const SITE_URL = 'https://politech-nsk.ru/index.php/studentam';
 const BASE_URL = 'https://politech-nsk.ru';
 const PROXY = 'https://schedule-proxy.ivanushca99.workers.dev/?url=';
-const APP_VERSION = '2.1';
+const APP_VERSION = '3.0';
 
 const DAYS = ['ВОСКРЕСЕНЬЕ', 'ПОНЕДЕЛЬНИК', 'ВТОРНИК', 'СРЕДА', 'ЧЕТВЕРГ', 'ПЯТНИЦА', 'СУББОТА'];
 const WEEK_DAYS = ['ПОНЕДЕЛЬНИК', 'ВТОРНИК', 'СРЕДА', 'ЧЕТВЕРГ', 'ПЯТНИЦА', 'СУББОТА'];
 
-let sheets = [];            // листы Excel хранятся по одному разу
-let groupsDatabase = {};    // имя группы -> { sheetId, rowIndex, colIndex }
-let groupsList = [];        // [{ name, course }]
+// Расписание звонков (из нативной таблицы колледжа)
+const BELLS = [
+    { num: 1, halves: ['8:30 - 9:15', '9:25 - 10:10'] },
+    { num: 2, halves: ['10:30 - 11:15', '11:25 - 12:10'] },
+    { num: 3, halves: ['12:40 - 13:25', '13:35 - 14:20'] },
+    { num: 4, halves: ['14:30 - 15:15', '15:25 - 16:10'] },
+    { num: 5, halves: ['16:20 - 17:05', '17:15 - 18:00'] },
+    { num: 6, halves: ['18:10 - 18:55', '19:05 - 19:50'] }
+];
+
+let sheets = [];
+let groupsDatabase = {};
+let groupsList = [];
 let selectedGroupIndex = 0;
 let currentViewMode = localStorage.getItem('viewMode') === 'week' ? 'week' : 'day';
 let currentTab = 'schedule';
@@ -25,6 +35,10 @@ let statusBanner = null;
 let isRefreshing = false;
 let showTodayOverride = false;
 let lastDateStr = getTodayString();
+let courseFilter = localStorage.getItem('courseFilter') || 'all';
+let searchQuery = '';
+let pendingTheme = null;
+let pendingGroupIdx = null;
 
 /* ---------- Утилиты ---------- */
 
@@ -74,18 +88,19 @@ function agoText() {
     return groupsList.length ? 'из кэша' : '—';
 }
 
-/* ---------- Тема ---------- */
+/* ---------- Темы: light / dark / oled ---------- */
 
-function applyTheme() {
-    const light = localStorage.getItem('theme') === 'light';
-    document.body.classList.toggle('light', light);
-    const meta = document.getElementById('meta-theme');
-    if (meta) meta.setAttribute('content', light ? '#FFFFFF' : '#1C1B1F');
+function currentTheme() {
+    const t = localStorage.getItem('theme');
+    return (t === 'light' || t === 'oled') ? t : 'dark';
 }
 
-function toggleTheme() {
-    localStorage.setItem('theme', document.body.classList.contains('light') ? 'dark' : 'light');
-    applyTheme();
+function applyTheme(theme) {
+    theme = theme || currentTheme();
+    document.body.classList.toggle('light', theme === 'light');
+    document.body.classList.toggle('oled', theme === 'oled');
+    const meta = document.getElementById('meta-theme');
+    if (meta) meta.setAttribute('content', theme === 'light' ? '#FFFFFF' : (theme === 'oled' ? '#000000' : '#1C1B1F'));
 }
 
 /* ---------- iOS-подсказка ---------- */
@@ -129,17 +144,17 @@ function renderCurrentTab() {
     else if (currentTab === 'settings') renderSettings();
 }
 
-/* ---------- Определение курса (работает в любом учебном году) ---------- */
+/* ---------- Курс по номеру группы (учебный год с сентября) ---------- */
 
 function detectCourse(groupName, now) {
     now = now || new Date();
     const m = groupName.match(/\d+/);
     if (!m) return 0;
     const last = parseInt(m[0].charAt(m[0].length - 1), 10);
-    const startYear = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1; // учебный год с сентября
+    const startYear = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
     let course = (startYear % 10) - last + 1;
     if (course <= 0) course += 10;
-    return (course >= 1 && course <= 4) ? course : 0; // 0 = «Другие»
+    return (course >= 1 && course <= 4) ? course : 0;
 }
 
 /* ---------- Загрузка и парсинг ---------- */
@@ -185,7 +200,6 @@ async function refreshSchedules() {
         });
         if (!excelUrls.length) throw new Error('На странице не найдено файлов расписания');
 
-        // качаем все файлы параллельно
         const results = await Promise.allSettled(excelUrls.map(async url => {
             const r = await fetch(PROXY + encodeURIComponent(url));
             if (!r.ok) throw new Error('HTTP ' + r.status + ' для ' + url);
@@ -256,7 +270,7 @@ function enableDemoMode() {
     switchTab(currentTab);
 }
 
-/* ---------- Снапшот в localStorage (мгновенный старт) ---------- */
+/* ---------- Снапшот ---------- */
 
 function saveSnapshot() {
     try {
@@ -338,21 +352,86 @@ function makeBanner(b) {
     return div;
 }
 
+/* ---------- Фильтр по курсу + поиск ---------- */
+
+function visibleLessons(lessons) {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return lessons;
+    return lessons.filter(l =>
+        l.subject.toLowerCase().includes(q) ||
+        l.teacher.toLowerCase().includes(q) ||
+        l.room.toLowerCase().includes(q));
+}
+
+function renderCourseChips() {
+    const wrap = document.createElement('div');
+    wrap.className = 'chips-row';
+    const items = [['1', '1 курс'], ['2', '2 курс'], ['3', '3 курс'], ['4', '4 курс'], ['bells', 'Звонки'], ['all', 'Все']];
+    items.forEach(item => {
+        const val = item[0], label = item[1];
+        const chip = document.createElement('button');
+        chip.className = 'course-chip' + (courseFilter === val ? ' active' : '');
+        chip.textContent = label;
+        chip.addEventListener('click', () => {
+            if (val === 'bells') { openBells(); return; }
+            courseFilter = val;
+            localStorage.setItem('courseFilter', val);
+            if (val !== 'all') {
+                const inCourse = groupsList[selectedGroupIndex] && String(groupsList[selectedGroupIndex].course) === val;
+                if (!inCourse) {
+                    const idx = groupsList.findIndex(g => String(g.course) === val);
+                    if (idx !== -1) {
+                        selectedGroupIndex = idx;
+                        localStorage.setItem('selectedGroupName', groupsList[idx].name);
+                        document.getElementById('group-select').value = String(idx);
+                    }
+                }
+            }
+            renderSchedule();
+        });
+        wrap.appendChild(chip);
+    });
+    return wrap;
+}
+
+function renderSearchRow() {
+    const row = document.createElement('div');
+    row.className = 'search-row';
+    row.innerHTML = '<input type="search" id="schedule-search" class="search-input" placeholder="Поиск: предмет, преподаватель, аудитория">';
+    const input = row.querySelector('input');
+    input.value = searchQuery;
+    input.addEventListener('input', () => {
+        searchQuery = input.value;
+        renderScheduleResults();
+    });
+    return row;
+}
+
 /* ---------- Расписание ---------- */
 
 function renderSchedule() {
     if (!groupsList.length) return;
+    const content = document.getElementById('content');
+    content.innerHTML = '';
+    if (statusBanner) content.appendChild(makeBanner(statusBanner));
+    content.appendChild(renderCourseChips());
+    content.appendChild(renderSearchRow());
+    const results = document.createElement('div');
+    results.id = 'schedule-results';
+    content.appendChild(results);
+    renderScheduleResults();
+}
+
+function renderScheduleResults() {
+    const results = document.getElementById('schedule-results');
+    if (!results) return;
     const group = groupsList[selectedGroupIndex];
     const g = group ? groupsDatabase[group.name] : null;
     const rawData = g ? sheets[g.sheetId] : null;
     if (!rawData) return;
-
-    const content = document.getElementById('content');
-    content.innerHTML = '';
-    if (statusBanner) content.appendChild(makeBanner(statusBanner));
-
-    if (currentViewMode === 'day') renderDayView(content, rawData, g);
-    else renderWeekView(content, rawData, g);
+    results.innerHTML = '';
+    if (currentViewMode === 'day') renderDayView(results, rawData, g);
+    else renderWeekView(results, rawData, g);
 }
 
 function parseTimeRanges(timeStr) {
@@ -373,26 +452,26 @@ function renderDayView(content, rawData, g) {
     const todayIdx = now.getDay();
     const nowMin = now.getHours() * 60 + now.getMinutes();
     const todayLessons = findLessons(rawData, g.rowIndex, g.colIndex, DAYS[todayIdx]);
+    const searching = searchQuery.trim().length > 0;
 
     const allEnded = todayLessons.length > 0 && todayLessons.every(l => {
         const ranges = parseTimeRanges(l.time);
         return ranges.length > 0 && ranges.every(r => r.end <= nowMin);
     });
 
-    if (todayLessons.length && (!allEnded || showTodayOverride)) {
+    if (todayLessons.length && (!allEnded || showTodayOverride || searching)) {
         appendDayBlock(content, DAYS[todayIdx], todayLessons, true, nowMin);
         return;
     }
 
-    if (allEnded) {
+    if (allEnded && !searching) {
         const link = document.createElement('button');
         link.className = 'show-today';
         link.textContent = 'Пары на сегодня закончились — показать сегодня';
-        link.addEventListener('click', () => { showTodayOverride = true; renderSchedule(); });
+        link.addEventListener('click', () => { showTodayOverride = true; renderScheduleResults(); });
         content.appendChild(link);
     }
 
-    // ищем ближайший день с парами (не только завтра)
     for (let off = 1; off <= 6; off++) {
         const idx = (todayIdx + off) % 7;
         const lessons = findLessons(rawData, g.rowIndex, g.colIndex, DAYS[idx]);
@@ -420,6 +499,8 @@ function renderWeekView(content, rawData, g) {
 }
 
 function appendDayBlock(content, label, lessons, isToday, nowMin) {
+    const shown = visibleLessons(lessons);
+    if (!shown.length) return; // при поиске пустые дни скрываем
     const block = document.createElement('div');
     block.className = 'day-block';
     block.innerHTML = '<div class="day-title ' + (isToday ? 'today' : '') + '">' + esc(label) + '</div>';
@@ -435,7 +516,7 @@ function appendDayBlock(content, label, lessons, isToday, nowMin) {
                 else if (start > nowMin && !nextMarked) { st = { state: 'next', mins: start - nowMin }; nextMarked = true; }
             }
         }
-        block.appendChild(createLessonCard(l, isToday, st));
+        if (shown.includes(l)) block.appendChild(createLessonCard(l, isToday, st));
     });
     content.appendChild(block);
 }
@@ -458,7 +539,6 @@ function createLessonCard(l, isToday, st) {
 
     let metaHtml = '';
     if (l.teacher) metaHtml += '<span>' + esc(l.teacher) + '</span>';
-    if (l.room) metaHtml += '<span class="room-badge">ауд. ' + esc(l.room) + '</span>';
 
     card.innerHTML = `
         <div class="lesson-time-block">
@@ -469,26 +549,66 @@ function createLessonCard(l, isToday, st) {
             <div class="lesson-subject">${esc(l.subject)} ${chip}</div>
             <div class="lesson-meta">${metaHtml}</div>
         </div>
+        ${l.room ? `<span class="room-badge">${esc(l.room)}</span>` : ''}
         ${isToday ? `<button class="attendance-btn" style="color: ${statusColor}" aria-label="Отметить посещение">${statusIcon}</button>` : ''}
     `;
 
     const btn = card.querySelector('.attendance-btn');
-    if (btn) btn.addEventListener('click', () => markAttendance(uniqueId));
+    if (btn) btn.addEventListener('click', () => openStatusMenu(btn, uniqueId));
     return card;
 }
 
-/* ---------- Посещаемость ---------- */
+/* ---------- Меню статуса посещения ---------- */
 
-function markAttendance(uniqueId) {
-    const statuses = ['present', 'half', 'absent', null];
-    const current = attendanceData[uniqueId] || null;
-    const nextStatus = statuses[(statuses.indexOf(current) + 1) % statuses.length];
-    if (nextStatus) attendanceData[uniqueId] = nextStatus;
-    else delete attendanceData[uniqueId];
-    saveAttendance();
-    if (navigator.vibrate) { try { navigator.vibrate(10); } catch (e) {} }
-    renderSchedule();
+function closeMenus() {
+    document.querySelectorAll('.menu-backdrop').forEach(el => el.remove());
 }
+
+function openStatusMenu(anchor, uniqueId) {
+    closeMenus();
+    const backdrop = document.createElement('div');
+    backdrop.className = 'menu-backdrop';
+    const menu = document.createElement('div');
+    menu.className = 'status-menu';
+
+    const items = [
+        ['present', '✔️', 'Посещено'],
+        ['half', '🟡', 'Половина'],
+        ['absent', '❌', 'Пропущено'],
+        [null, '⚪', 'Убрать отметку']
+    ];
+    items.forEach(item => {
+        const val = item[0], icon = item[1], label = item[2];
+        const row = document.createElement('button');
+        row.className = 'status-item' + (attendanceData[uniqueId] === val && val !== null ? ' selected' : '');
+        row.innerHTML = '<span class="status-ico">' + icon + '</span><span>' + label + '</span>';
+        row.addEventListener('click', ev => {
+            ev.stopPropagation();
+            if (val) attendanceData[uniqueId] = val;
+            else delete attendanceData[uniqueId];
+            saveAttendance();
+            if (navigator.vibrate) { try { navigator.vibrate(10); } catch (e) {} }
+            closeMenus();
+            renderScheduleResults();
+        });
+        menu.appendChild(row);
+    });
+
+    backdrop.appendChild(menu);
+    backdrop.addEventListener('click', closeMenus);
+    menu.addEventListener('click', ev => ev.stopPropagation());
+    document.body.appendChild(backdrop);
+
+    const r = anchor.getBoundingClientRect();
+    const mw = menu.offsetWidth, mh = menu.offsetHeight;
+    let left = Math.max(8, Math.min(r.right - mw, window.innerWidth - mw - 8));
+    let top = r.bottom + 6;
+    if (top + mh > window.innerHeight - 8) top = Math.max(8, r.top - mh - 6);
+    menu.style.left = left + 'px';
+    menu.style.top = top + 'px';
+}
+
+/* ---------- Посещаемость ---------- */
 
 function saveAttendance() {
     try { localStorage.setItem('attendance', JSON.stringify(attendanceData)); }
@@ -497,23 +617,14 @@ function saveAttendance() {
 
 function renderAttendance() {
     const content = document.getElementById('content');
-    content.innerHTML = `
-        <h2 class="page-title">Посещаемость</h2>
-        <div class="toolbar">
-            <button class="btn" id="att-export">⬇️ Экспорт</button>
-            <button class="btn" id="att-import">⬆️ Импорт</button>
-            <button class="btn btn-danger" id="att-reset">🗑️ Сброс</button>
-        </div>`;
-    document.getElementById('att-export').addEventListener('click', exportAttendance);
-    document.getElementById('att-import').addEventListener('click', () => document.getElementById('import-file').click());
-    document.getElementById('att-reset').addEventListener('click', resetAttendance);
+    content.innerHTML = '<h2 class="page-title">Посещаемость</h2>';
 
     const stats = {};
     let totalPresent = 0, totalAll = 0;
     for (const [key, status] of Object.entries(attendanceData)) {
         const parts = key.split('_');
         if (parts.length < 4) continue;
-        const subject = parts.slice(1, -2).join('_'); // предмет может содержать '_'
+        const subject = parts.slice(1, -2).join('_');
         if (!stats[subject]) stats[subject] = { present: 0, total: 0 };
         stats[subject].total++;
         totalAll++;
@@ -535,52 +646,16 @@ function makeStatsCard(title, present, total) {
     const percent = total ? Math.round((present / total) * 100) : 0;
     const color = percent >= attendanceThreshold ? 'var(--success)' : 'var(--danger)';
     const card = document.createElement('div');
-    card.className = 'lesson-card';
+    card.className = 'stats-card';
     card.style.borderLeftColor = color;
     card.innerHTML = `
-        <div class="lesson-info">
-            <div class="stats-head">
-                <div class="lesson-subject">${esc(title)}</div>
-                <div class="stats-percent" style="color: ${color}">${percent}%</div>
-            </div>
-            <div class="stats-bar"><div class="stats-fill" style="background: ${color}; width: ${percent}%;"></div></div>
-            <div class="lesson-meta stats-meta">Посещено: ${present} из ${total}</div>
-        </div>`;
+        <div class="stats-head">
+            <div class="stats-title">${esc(title)}</div>
+            <div class="stats-percent" style="color: ${color}">${percent}%</div>
+        </div>
+        <div class="stats-bar"><div class="stats-fill" style="background: ${color}; width: ${percent}%;"></div></div>
+        <div class="stats-meta">Посещено: ${present} из ${total}</div>`;
     return card;
-}
-
-function exportAttendance() {
-    const payload = { app: 'CollegeApps', version: 2, exported: new Date().toISOString(), attendance: attendanceData };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'посещаемость_' + getTodayString() + '.json';
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-}
-
-function importAttendance(file) {
-    const reader = new FileReader();
-    reader.onload = () => {
-        try {
-            const data = JSON.parse(reader.result);
-            const src = (data && typeof data === 'object' && data.attendance) ? data.attendance : data;
-            if (!src || typeof src !== 'object' || Array.isArray(src)) throw new Error('bad format');
-            const valid = {};
-            for (const [k, v] of Object.entries(src)) {
-                if (v === 'present' || v === 'half' || v === 'absent') valid[k] = v;
-            }
-            const count = Object.keys(valid).length;
-            if (!count) throw new Error('empty');
-            if (!confirm('Импортировать ' + count + ' записей? Текущие данные будут заменены.')) return;
-            attendanceData = valid;
-            saveAttendance();
-            renderCurrentTab();
-        } catch (e) {
-            alert('Не удалось прочитать файл. Ожидается JSON, созданный кнопкой «Экспорт».');
-        }
-    };
-    reader.readAsText(file);
 }
 
 function resetAttendance() {
@@ -588,6 +663,53 @@ function resetAttendance() {
     attendanceData = {};
     saveAttendance();
     renderCurrentTab();
+}
+
+/* ---------- Модальные окна ---------- */
+
+function openModal(title, bodyHtml) {
+    closeModal();
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.id = 'modal-overlay';
+    overlay.innerHTML = `
+        <div class="modal">
+            <h2 class="modal-title">${esc(title)}</h2>
+            <div class="modal-body">${bodyHtml}</div>
+            <div class="modal-actions" id="modal-actions"></div>
+        </div>`;
+    overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
+    document.body.appendChild(overlay);
+    return overlay;
+}
+
+function closeModal() {
+    const o = document.getElementById('modal-overlay');
+    if (o) o.remove();
+}
+
+function modalButton(label, primary, onClick) {
+    const b = document.createElement('button');
+    b.className = 'modal-btn' + (primary ? ' primary' : '');
+    b.textContent = label;
+    b.addEventListener('click', onClick);
+    document.getElementById('modal-actions').appendChild(b);
+    return b;
+}
+
+/* ---------- Звонки ---------- */
+
+function openBells() {
+    let rows = '';
+    BELLS.forEach(b => {
+        rows += `
+            <div class="bell-row">
+                <div class="bell-num">${b.num}</div>
+                <div class="bell-times"><span>${b.halves[0]}</span><span>${b.halves[1]}</span></div>
+            </div>`;
+    });
+    openModal('Расписание звонков', rows + '<div class="modal-note">5–6 пары указаны ориентировочно — сверяйтесь с таблицей колледжа.</div>');
+    modalButton('Закрыть', true, closeModal);
 }
 
 /* ---------- Настройки ---------- */
@@ -600,12 +722,13 @@ function renderSettings() {
         <div class="settings-group">
             <div class="settings-title">Оформление</div>
             <div class="settings-row settings-clickable" id="set-theme">
-                <span>Светлая / Тёмная</span><span class="settings-emoji">🌓</span>
+                <span>Тема оформления</span><span class="settings-value">Выбрать →</span>
             </div>
         </div>
         <div class="settings-group">
-            <div class="settings-title">Группа</div>
+            <div class="settings-title">Моя группа</div>
             <div class="settings-row"><span>Текущая группа</span><span class="settings-value">${esc(groupName)}</span></div>
+            <div class="settings-row settings-clickable" id="set-group"><span>Сменить группу</span><span class="settings-value">Выбрать →</span></div>
         </div>
         <div class="settings-group">
             <div class="settings-title">Посещаемость</div>
@@ -613,6 +736,7 @@ function renderSettings() {
                 <span>Порог «хорошей» посещаемости, %</span>
                 <input type="number" id="set-threshold" class="num-input" min="0" max="100" value="${attendanceThreshold}">
             </div>
+            <div class="settings-row settings-clickable" id="set-att-reset"><span>Сбросить историю посещаемости</span><span class="settings-danger">🗑️</span></div>
         </div>
         <div class="settings-group">
             <div class="settings-title">Данные</div>
@@ -624,7 +748,9 @@ function renderSettings() {
             <div class="settings-row"><span>Версия</span><span class="settings-value">${APP_VERSION}</span></div>
             <div class="settings-row"><span>Источник расписания</span><a class="settings-link" href="${SITE_URL}" target="_blank" rel="noopener">politech-nsk.ru</a></div>
         </div>`;
-    document.getElementById('set-theme').addEventListener('click', toggleTheme);
+    document.getElementById('set-theme').addEventListener('click', openSettingsModal);
+    document.getElementById('set-group').addEventListener('click', openSettingsModal);
+    document.getElementById('set-att-reset').addEventListener('click', resetAttendance);
     document.getElementById('set-refresh').addEventListener('click', () => refreshSchedules());
     document.getElementById('set-threshold').addEventListener('change', e => {
         let v = parseInt(e.target.value, 10);
@@ -632,6 +758,72 @@ function renderSettings() {
         attendanceThreshold = Math.min(100, Math.max(0, v));
         e.target.value = attendanceThreshold;
         localStorage.setItem('attThreshold', String(attendanceThreshold));
+    });
+}
+
+function openSettingsModal() {
+    pendingTheme = currentTheme();
+    pendingGroupIdx = selectedGroupIndex;
+
+    const themes = [
+        ['light', '☀️', 'Светлая'],
+        ['dark', '🌙', 'Тёмная'],
+        ['oled', '🖤', 'OLED / AMOLED']
+    ];
+    let themeHtml = '';
+    themes.forEach(t => {
+        themeHtml += `
+            <label class="theme-option" data-theme="${t[0]}">
+                <input type="radio" name="theme-choice" value="${t[0]}" ${pendingTheme === t[0] ? 'checked' : ''}>
+                <span class="theme-ico">${t[1]}</span><span>${t[2]}</span>
+            </label>`;
+    });
+
+    let options = '';
+    let curCourse = -1;
+    groupsList.forEach((g, i) => {
+        if (g.course !== curCourse) {
+            if (curCourse !== -1) options += '</optgroup>';
+            curCourse = g.course;
+            options += '<optgroup label="' + esc(g.course ? g.course + ' курс' : 'Другие') + '">';
+        }
+        options += '<option value="' + i + '"' + (i === pendingGroupIdx ? ' selected' : '') + '>' + esc(g.name) + '</option>';
+    });
+    if (curCourse !== -1) options += '</optgroup>';
+
+    openModal('Настройки', `
+        <div class="modal-section-title">Тема оформления</div>
+        <div id="theme-options">${themeHtml}</div>
+        <div class="modal-section-title">Моя группа</div>
+        <div class="modal-note">Выбранная группа будет автоматически открываться в приложении.</div>
+        <select id="modal-group" class="group-selector">${options}</select>
+    `);
+
+    document.querySelectorAll('#theme-options .theme-option').forEach(label => {
+        label.addEventListener('click', () => {
+            pendingTheme = label.dataset.theme;
+            document.querySelectorAll('#theme-options .theme-option').forEach(l =>
+                l.classList.toggle('selected', l === label));
+            const radio = label.querySelector('input');
+            if (radio) radio.checked = true;
+        });
+        if (label.dataset.theme === pendingTheme) label.classList.add('selected');
+    });
+    document.getElementById('modal-group').addEventListener('change', e => {
+        pendingGroupIdx = parseInt(e.target.value, 10) || 0;
+    });
+
+    modalButton('Закрыть', false, closeModal);
+    modalButton('Сохранить', true, () => {
+        localStorage.setItem('theme', pendingTheme);
+        applyTheme(pendingTheme);
+        if (Number.isInteger(pendingGroupIdx) && groupsList[pendingGroupIdx]) {
+            selectedGroupIndex = pendingGroupIdx;
+            localStorage.setItem('selectedGroupName', groupsList[pendingGroupIdx].name);
+            document.getElementById('group-select').value = String(pendingGroupIdx);
+        }
+        closeModal();
+        renderCurrentTab();
     });
 }
 
@@ -659,7 +851,7 @@ function updateUpdatedLabel() {
 function tick() {
     const today = getTodayString();
     if (today !== lastDateStr) { lastDateStr = today; showTodayOverride = false; }
-    if (currentTab === 'schedule' && groupsList.length) renderSchedule();
+    if (currentTab === 'schedule' && groupsList.length) renderScheduleResults();
     updateUpdatedLabel();
 }
 
@@ -679,13 +871,11 @@ function findLessons(rawData, startRow, groupCol, targetDayName) {
         const foundDay = DAYS.find(d => rowString.includes(d));
 
         if (foundDay) {
-            if (isCurrentDay) break; // дошли до следующего дня
+            if (isCurrentDay) break;
             isCurrentDay = (foundDay === targetDayName);
-            // не continue: в этой же строке может быть первая пара
         }
         if (!isCurrentDay) continue;
 
-        // 1. все временные интервалы строки (первые 6 колонок)
         let allTimes = [];
         let numCellStr = '';
         for (let c = 0; c < 6; c++) {
@@ -704,7 +894,6 @@ function findLessons(rawData, startRow, groupCol, targetDayName) {
         allTimes = [...new Set(allTimes)];
         const finalTimes = allTimes.join(' / ');
 
-        // 2. ячейки нашей группы (возможны подгруппы в соседних колонках)
         const texts = [];
         for (let c = groupCol; c <= Math.min(groupCol + 4, rawData[r].length - 1); c++) {
             if (rawData[r][c]) texts.push(String(rawData[r][c]).replace(/\n/g, ' ').trim());
@@ -738,18 +927,12 @@ document.addEventListener('DOMContentLoaded', () => {
     applyTheme();
     initIOSHint();
 
-    document.getElementById('theme-btn').addEventListener('click', toggleTheme);
+    document.getElementById('theme-btn').addEventListener('click', openSettingsModal);
     document.getElementById('view-toggle').addEventListener('click', toggleView);
     document.getElementById('refresh-btn').addEventListener('click', () => refreshSchedules());
     document.querySelectorAll('.nav-item').forEach(el =>
         el.addEventListener('click', () => switchTab(el.dataset.tab)));
-    document.getElementById('import-file').addEventListener('change', e => {
-        const file = e.target.files && e.target.files[0];
-        if (file) importAttendance(file);
-        e.target.value = '';
-    });
 
-    // мгновенный старт из снапшота, затем фоновое обновление
     if (loadSnapshot()) {
         populateGroupSelector();
         restoreSelectedGroup();
