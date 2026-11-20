@@ -1,8 +1,6 @@
-/* Расписание НПК — Service Worker v3
-   Стратегия: network-first + офлайн-фолбэк на кэш.
-   Кэшируются и ответы прокси -> офлайн показывает последнее реальное расписание. */
+/* Расписание НПК — Service Worker v4 */
 
-const CACHE = 'college-cache-v3';
+const CACHE = 'college-cache-v4';
 const PRECACHE = [
     './',
     './index.html',
@@ -17,7 +15,6 @@ const PRECACHE = [
 self.addEventListener('install', e => {
     e.waitUntil((async () => {
         const cache = await caches.open(CACHE);
-        // allSettled: отсутствие одного файла (например, icon-512.png) не ломает установку
         await Promise.allSettled(PRECACHE.map(u => cache.add(u)));
         await self.skipWaiting();
     })());
@@ -35,7 +32,7 @@ async function fromCache(cache, request) {
     const cached = await cache.match(request, { ignoreVary: true });
     if (!cached) return null;
     const headers = new Headers(cached.headers);
-    headers.set('X-From-Cache', '1'); // приложение поймёт, что данные офлайн-копия
+    headers.set('X-From-Cache', '1');
     return new Response(cached.body, { status: cached.status, statusText: cached.statusText, headers: headers });
 }
 
