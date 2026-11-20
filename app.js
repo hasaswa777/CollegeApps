@@ -1,9 +1,9 @@
-/* Расписание НПК — app.js v4.1 */
+/* Расписание НПК — app.js v4.2 */
 
 const SITE_URL = 'https://politech-nsk.ru/index.php/studentam';
 const BASE_URL = 'https://politech-nsk.ru';
 const PROXY = 'https://schedule-proxy.ivanushca99.workers.dev/?url=';
-const APP_VERSION = '4.1';
+const APP_VERSION = '4.2';
 
 const DAYS = ['ВОСКРЕСЕНЬЕ', 'ПОНЕДЕЛЬНИК', 'ВТОРНИК', 'СРЕДА', 'ЧЕТВЕРГ', 'ПЯТНИЦА', 'СУББОТА'];
 const WEEK_DAYS = ['ПОНЕДЕЛЬНИК', 'ВТОРНИК', 'СРЕДА', 'ЧЕТВЕРГ', 'ПЯТНИЦА', 'СУББОТА'];
@@ -906,23 +906,103 @@ function tick() {
     updateUpdatedLabel();
 }
 
-/* ---------- Парсер расписания (с извлечением преподавателя) ---------- */
+/* ---------- Парсер расписания: устойчивое извлечение ФИО преподавателя ---------- */
 
-const TEACHER_FULL = /^[А-ЯЁа-яё][а-яё\-]*(?:-[А-ЯЁ][а-яё\-]*)?\.?\s*[А-ЯЁ]\.[А-ЯЁ]\.(?:\s*,\s*[А-ЯЁа-яё][а-яё\-]*(?:-[А-ЯЁ][а-яё\-]*)?\.?\s*[А-ЯЁ]\.[А-ЯЁ]\.)*$/;
-const TEACHER_PART = /[А-ЯЁ][а-яё]+(?:-[А-ЯЁ][а-яё]+)?\.?\s*[А-ЯЁ]\.[А-ЯЁ]\.(?:\s*,\s*[А-ЯЁ][а-яё]+(?:-[А-ЯЁ][а-яё]+)?\.?\s*[А-ЯЁ]\.[А-ЯЁ]\.)*/;
+function cleanCell(v) {
+    return String(v == null ? '' : v)
+        .replace(/\u00A0/g, ' ')
+        .replace(/([А-ЯЁA-Z])\.\s+(?=[А-ЯЁA-Z]\.)/g, '$1.')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+/* Фамилия И.О. / Фамилия И. О. / Фамилия И.М (без последней точки), несколько через , или / */
+const TEACHER_FULL = /^[А-ЯЁа-яё][а-яё\-]*(?:-[А-ЯЁ][а-яё\-]*)?\.?\s*[А-ЯЁ]\.[А-ЯЁ]\.?(?:\s*[,/]\s*[А-ЯЁа-яё][а-яё\-]*(?:-[А-ЯЁ][а-яё\-]*)?\.?\s*[А-ЯЁ]\.[А-ЯЁ]\.?)*$/;
+/* И.О. Фамилия / И. О. Фамилия */
+const TEACHER_INI_FIRST = /^[А-ЯЁ]\.[А-ЯЁ]\.?\s*[А-ЯЁа-яё][а-яё\-]*(?:-[А-ЯЁ][а-яё\-]*)?(?:\s*[,/]\s*[А-ЯЁ]\.[А-ЯЁ]\.?\s*[А-ЯЁа-яё][а-яё\-]*(?:-[А-ЯЁ][а-яё\-]*)?)*$/;
+/* Фамилия Имя Отчество (полное ФИО), но не похоже на название предмета */
+const TEACHER_FULLNAME = /^[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]{2,}\s+[А-ЯЁ][а-яё]{2,}$/;
+const SUBJECT_WORDS = /безопасност|культур|физическ|математ|истор|информат|философ|эконом|правов|психолог|педагог|хими|биолог|географ|литератур|русск|англ|язык|обеспеч|администр|сетев|маршрут|мдк|разговор|основы|управлен|охран|труд|электив/i;
+/* Поиск ФИО внутри объединённой ячейки «Предмет Фамилия И.О.» */
+const TEACHER_PART = /[А-ЯЁ][а-яё]+(?:-[А-ЯЁ][а-яё]+)?\.?\s*[А-ЯЁ]\.[А-ЯЁ]\.?/;
+const TEACHER_PART_INI = /[А-ЯЁ]\.[А-ЯЁ]\.?\s*[А-ЯЁ][а-яё]+(?:-[А-ЯЁ][а-яё]+)?/;
+
+function isTeacherText(t) {
+    if (TEACHER_FULL.test(t) || TEACHER_INI_FIRST.test(t)) return true;
+    return TEACHER_FULLNAME.test(t) && !SUBJECT_WORDS.test(t);
+}
+
+function isRoomText(t) {
+    return /^[0-9]{1,4}[а-яА-Яa-zA-Z]?$/.test(t) ||
+        /^[0-9]{1,3}\/[0-9]$/.test(t) ||
+        (t.length <= 14 && /зал|ауд|спорт/i.test(t));
+}
+
+function looksLikePerson(t) {
+    return /[А-ЯЁ]\.\s*[А-ЯЁ]\.?/.test(t) ||
+        /^[А-ЯЁ]\./.test(t) ||
+        /^[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]/.test(t);
+}
 
 function findLessons(rawData, startRow, groupCol, targetDayName) {
     const lessons = [];
     let isCurrentDay = false;
-
     const timeRegex = /\d{1,2}:\d{2}\s*[-–—]\s*\d{1,2}:\d{2}/g;
 
+    const rowDay = row => DAYS.find(d =>
+        row.slice(0, 5).map(c => typeof c === 'string' ? c : '').join(' ').toUpperCase().includes(d));
+
+    const windowTexts = row => {
+        const out = [];
+        const end = Math.min(groupCol + 4, row.length - 1);
+        for (let c = groupCol; c <= end; c++) {
+            const t = cleanCell(row[c]);
+            if (t) out.push(t);
+        }
+        return [...new Set(out)];
+    };
+
+    const classify = texts => {
+        let teacher = '', room = '';
+        const leftovers = [];
+        for (const text of texts) {
+            if (isTeacherText(text)) { if (!teacher) teacher = text; continue; }
+
+            let rest = text;
+            const tm = text.match(TEACHER_PART) || text.match(TEACHER_PART_INI);
+            if (tm) {
+                if (!teacher) teacher = tm[0];
+                rest = cleanCell(text.replace(tm[0], ' '))
+                    .replace(/^[\s,;.\-–—\/]+/, '')
+                    .replace(/[\s,;\/\-–—]+$/, '');
+            }
+            if (!rest) continue;
+            if (/\d{1,2}:\d{2}\s*[-–—]\s*\d{1,2}:\d{2}/.test(rest)) continue;
+            if (isRoomText(rest)) { if (!room) room = rest; continue; }
+
+            if (!room) {
+                const rm = rest.match(/([а-яёa-z])\s(\d{1,3}[А-ЯA-Zа-я]?)$/i);
+                if (rm) {
+                    room = rm[2];
+                    rest = rest.slice(0, rest.length - rm[2].length - 1).trim();
+                }
+            }
+            if (rest.length >= 2) leftovers.push(rest);
+        }
+        /* Страховка: если ФИО не распознано шаблоном, но в ячейках есть «человеческий» текст — забираем его */
+        if (!teacher) {
+            const ti = leftovers.findIndex(looksLikePerson);
+            if (ti !== -1) teacher = leftovers.splice(ti, 1)[0];
+        }
+        leftovers.sort((a, b) => b.length - a.length);
+        return { subject: leftovers[0] || '', teacher: teacher, room: room };
+    };
+
     for (let r = startRow; r < rawData.length; r++) {
-        if (!rawData[r]) continue;
+        const row = rawData[r];
+        if (!row) continue;
 
-        const rowString = rawData[r].slice(0, 5).map(c => typeof c === 'string' ? c : '').join(' ').toUpperCase();
-        const foundDay = DAYS.find(d => rowString.includes(d));
-
+        const foundDay = rowDay(row);
         if (foundDay) {
             if (isCurrentDay) break;
             isCurrentDay = (foundDay === targetDayName);
@@ -932,7 +1012,7 @@ function findLessons(rawData, startRow, groupCol, targetDayName) {
         let allTimes = [];
         let numCellStr = '';
         for (let c = 0; c < 6; c++) {
-            const cell = rawData[r][c];
+            const cell = row[c];
             if (typeof cell === 'string') {
                 const matches = cell.match(timeRegex);
                 if (matches) allTimes.push(...matches);
@@ -943,47 +1023,27 @@ function findLessons(rawData, startRow, groupCol, targetDayName) {
             }
         }
         if (!allTimes.length) continue;
+        const finalTimes = [...new Set(allTimes)].join(' / ');
 
-        allTimes = [...new Set(allTimes)];
-        const finalTimes = allTimes.join(' / ');
+        const texts = windowTexts(row).filter(t => t !== numCellStr);
+        const res = classify(texts);
+        if (!res.subject) continue;
 
-        const texts = [];
-        for (let c = groupCol; c <= Math.min(groupCol + 4, rawData[r].length - 1); c++) {
-            if (rawData[r][c]) texts.push(String(rawData[r][c]).replace(/\n/g, ' ').trim());
-        }
+        let teacher = res.teacher, room = res.room;
 
-        let subject = '', teacher = '', room = '';
-        for (const text of [...new Set(texts)]) {
-            if (TEACHER_FULL.test(text)) { if (!teacher) teacher = text; continue; }
-
-            let rest = text;
-            const tm = text.match(TEACHER_PART);
-            if (tm) {
-                if (!teacher) teacher = tm[0];
-                rest = text.replace(tm[0], ' ').replace(/\s+/g, ' ').trim();
-                rest = rest.replace(/^[\s,;.\-–—\/]+/, '').replace(/[\s,;\/\-–—]+$/, '');
-            }
-            if (!rest) continue;
-            if (/\d{1,2}:\d{2}\s*[-–—]\s*\d{1,2}:\d{2}/.test(rest)) continue;
-            if (rest === numCellStr) continue;
-
-            if (/^[0-9]{1,4}[а-яА-Яa-zA-Z]?$/.test(rest) || /^[0-9]{1,3}[\/][0-9]$/.test(rest) ||
-                rest.toLowerCase().includes('зал') || rest.toLowerCase().includes('ауд') || rest.toLowerCase().includes('спорт')) {
-                if (!room) room = rest;
-                continue;
-            }
-
-            if (!room) {
-                const rm = rest.match(/([а-яёa-z])\s(\d{1,3}[А-ЯA-Zа-я]?)$/i);
-                if (rm) {
-                    room = rm[2];
-                    rest = rest.slice(0, rest.length - rm[2].length - 1).trim();
+        /* ФИО/аудитория могут стоять в строке-продолжении пары (вторая половина без предмета) */
+        if (!teacher || !room) {
+            const nrow = rawData[r + 1];
+            if (nrow && !rowDay(nrow)) {
+                const nres = classify(windowTexts(nrow));
+                if (!nres.subject) {
+                    if (!teacher && nres.teacher) teacher = nres.teacher;
+                    if (!room && nres.room) room = nres.room;
                 }
             }
-            if (rest.length >= 2 && (!subject || rest.length > subject.length)) subject = rest;
         }
 
-        if (subject) lessons.push({ num: numCellStr || '•', time: finalTimes, subject: subject, teacher: teacher, room: room });
+        lessons.push({ num: numCellStr || '•', time: finalTimes, subject: res.subject, teacher: teacher, room: room });
     }
     return lessons;
 }
