@@ -1,4 +1,4 @@
-/* Расписание НПК — style.css v4.0 */
+/* Расписание НПК — style.css v4.1 */
 
 :root {
     --bg: #1C1B1F; --surface: #2A2A2E; --surface-2: #35353A; --text: #E6E1E5;
@@ -111,38 +111,42 @@ body {
 .search-input::placeholder { color: var(--text-muted); }
 .search-input:focus { border-color: var(--accent); }
 
-/* Дни и пары */
-.day-block { margin-bottom: 20px; }
-.day-title { font-size: 15px; color: var(--accent); margin-bottom: 10px; font-weight: bold; text-transform: uppercase; }
+/* Дни */
+.day-block { margin-bottom: 22px; }
+.day-title { font-size: 15px; color: var(--accent); margin-bottom: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: .3px; }
 .day-title.today { color: var(--success); }
 .day-date { color: var(--text-muted); font-weight: 600; font-size: 12px; }
 
+/* Карточка пары: колонки выровнены по верхнему краю */
 .lesson-card {
-    background: var(--surface); border-radius: 14px; padding: 14px; margin-bottom: 10px;
-    display: flex; gap: 12px; border-left: 4px solid var(--accent); align-items: center;
+    background: var(--surface); border-radius: 14px; padding: 14px 16px; margin-bottom: 10px;
+    display: flex; gap: 14px; border-left: 4px solid var(--accent); align-items: flex-start;
 }
 .lesson-card.today { border-left-color: var(--success); }
 .lesson-card.now { border-left-color: var(--success); box-shadow: 0 0 0 1px var(--success) inset; }
 
-.lesson-time-block { display: flex; flex-direction: column; min-width: 52px; justify-content: center; }
-.lesson-num { font-size: 18px; font-weight: 800; color: var(--accent); line-height: 1; }
-.lesson-time { font-size: 10px; color: var(--text-muted); margin-top: 3px; white-space: pre-wrap; }
+.lesson-time-block {
+    display: flex; flex-direction: column; gap: 5px;
+    min-width: 88px; max-width: 96px; flex-shrink: 0; padding-top: 1px;
+}
+.lesson-num { font-size: 13px; font-weight: 700; color: var(--accent); line-height: 1.2; }
+.lesson-time { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--text-muted); line-height: 1.35; }
 
-.lesson-info { flex: 1; min-width: 0; }
-.lesson-subject { font-size: 15px; font-weight: 600; margin-bottom: 3px; overflow-wrap: anywhere; }
-.lesson-meta { font-size: 12px; color: var(--text-muted); display: flex; flex-wrap: wrap; gap: 6px; }
-.lesson-teacher { display: inline-flex; align-items: center; gap: 4px; }
+.lesson-info { flex: 1; min-width: 0; padding-top: 1px; }
+.lesson-subject { font-size: 15px; font-weight: 600; line-height: 1.35; margin-bottom: 4px; overflow-wrap: anywhere; }
+.lesson-meta { font-size: 12px; color: var(--text-muted); line-height: 1.4; }
+.lesson-teacher { display: inline-block; }
 
+.lesson-side { display: flex; align-items: center; gap: 10px; align-self: center; flex-shrink: 0; }
 .room-badge {
     background: var(--surface-2); padding: 8px 10px; border-radius: 10px;
-    color: var(--text); font-weight: 700; font-size: 13px; flex-shrink: 0;
+    color: var(--text); font-weight: 700; font-size: 13px; white-space: nowrap;
 }
+.attendance-btn { background: none; border: none; font-size: 20px; cursor: pointer; padding: 4px; line-height: 1; }
 
 .chip { font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 6px; vertical-align: middle; white-space: nowrap; }
 .chip-now { background: rgba(76, 175, 80, 0.15); color: var(--success); }
 .chip-next { background: var(--surface-2); border: 1px solid var(--border); color: var(--accent); }
-
-.attendance-btn { background: none; border: none; font-size: 20px; cursor: pointer; padding: 4px; flex-shrink: 0; }
 
 .show-today {
     display: block; width: 100%; margin-bottom: 14px; padding: 12px;
