@@ -2,111 +2,61 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="description" content="Расписание занятий Новосибирского политехнического колледжа: пары на день и неделю, учёт посещаемости, офлайн-режим.">
+    <meta name="theme-color" id="meta-theme" content="#1C1B1F">
     <title>Расписание НПК</title>
-    
+
     <link rel="manifest" href="manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Расписание">
     <link rel="apple-touch-icon" href="icon-192.png">
+    <link rel="icon" type="image/png" href="icon-192.png">
+    <link rel="stylesheet" href="style.css">
 
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-
-    <style>
-        :root { 
-            --bg: #1C1B1F; --surface: #2A2A2E; --text: #E6E1E5; 
-            --text-muted: #A0A0A0; --accent: #86D0FF; --border: #3A3A3E; 
-            --success: #4CAF50; --danger: #F44336; --warning: #FFC107;
-            --nav-bg: #1C1B1F;
-        }
-        body.light {
-            --bg: #FFFFFF; --surface: #F2F3F5; --text: #1C1B1F; 
-            --text-muted: #5F6368; --accent: #00658E; --border: #E0E0E0;
-            --nav-bg: #FFFFFF;
-        }
-        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, sans-serif; background-color: var(--bg); color: var(--text); display: flex; flex-direction: column; height: 100vh; overflow: hidden; padding-bottom: env(safe-area-inset-bottom); }
-        
-        .header { padding: 15px 20px; background: var(--bg); display: flex; flex-direction: column; gap: 12px; z-index: 10; border-bottom: 1px solid var(--border); }
-        .header-top { display: flex; justify-content: space-between; align-items: center; }
-        .header h1 { margin: 0; font-size: 20px; font-weight: 600; color: var(--text); }
-        .icon-btn { background: none; border: none; color: var(--accent); font-size: 18px; cursor: pointer; padding: 4px; }
-        
-        .content { flex: 1; overflow-y: auto; padding: 16px; }
-        .loader { text-align: center; margin-top: 50px; color: var(--accent); }
-        .error { color: var(--danger); text-align: center; background: rgba(244, 67, 54, 0.1); padding: 15px; border-radius: 10px; }
-        
-        .day-block { margin-bottom: 20px; }
-        .day-title { font-size: 16px; color: var(--accent); margin-bottom: 10px; font-weight: bold; text-transform: uppercase; }
-        .day-title.today { color: var(--success); }
-        
-        .lesson-card { background: var(--surface); border-radius: 12px; padding: 12px; margin-bottom: 10px; display: flex; gap: 12px; border-left: 4px solid var(--accent); align-items: center; }
-        .lesson-card.today { border-left-color: var(--success); }
-        
-        /* Блок времени: минимальная ширина, растягивается под длинное время (несколько пар) */
-        .lesson-time-block { display: flex; flex-direction: column; min-width: 52px; flex-shrink: 0; justify-content: center; align-items: stretch; text-align: left; }
-        .lesson-num { font-size: 18px; font-weight: 800; color: var(--accent); line-height: 1; }
-        .lesson-time { font-size: 11px; color: var(--text-muted); margin-top: 2px; line-height: 1.35; white-space: normal; overflow-wrap: anywhere; }
-
-        /* Инфо-блок: тянется на всю оставшуюся ширину, текст выравнивается по левому краю строки */
-        .lesson-info { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; justify-content: center; text-align: left; }
-        .lesson-subject { font-size: 15px; font-weight: 600; margin-bottom: 2px; line-height: 1.3; text-align: left; overflow-wrap: break-word; hyphens: auto; }
-        .lesson-meta { font-size: 12px; color: var(--text-muted); display: flex; flex-wrap: wrap; gap: 6px; line-height: 1.4; text-align: left; }
-        .room-badge { background: var(--bg); padding: 2px 6px; border-radius: 4px; color: var(--accent); font-weight: bold; font-size: 11px; white-space: nowrap; }
-        
-        .attendance-btn { background: none; border: none; font-size: 20px; cursor: pointer; padding: 4px; margin-left: 8px; flex-shrink: 0; align-self: center; }
-        
-        .settings-group { background: var(--surface); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
-        .settings-title { font-size: 16px; font-weight: bold; margin-bottom: 12px; }
-        .settings-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
-        .settings-row:last-child { border-bottom: none; }
-        
-        .bottom-nav { display: flex; background: var(--nav-bg); border-top: 1px solid var(--border); padding: 8px 0; justify-content: space-around; }
-        .nav-item { display: flex; flex-direction: column; align-items: center; color: var(--text-muted); font-size: 10px; cursor: pointer; gap: 2px; padding: 4px 12px; }
-        .nav-item.active { color: var(--accent); }
-        .nav-icon { font-size: 20px; }
-
-        .group-selector { width: 100%; background: var(--surface); color: var(--accent); border: 1px solid var(--border); padding: 10px; border-radius: 8px; font-size: 14px; font-weight: 500; outline: none; }
-        
-        .ios-hint { display: none; padding: 10px; text-align: center; font-size: 11px; color: var(--text-muted); background: var(--surface); border-radius: 8px; margin: 10px; }
-    </style>
+    <script defer src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" crossorigin="anonymous"></script>
+    <script defer src="app.js"></script>
 </head>
 <body>
     <div class="header">
         <div class="header-top">
-            <h1 id="app-title">Расписание</h1>
-            <div>
-                <button class="icon-btn" onclick="toggleTheme()">🌓</button>
-                <button class="icon-btn" onclick="toggleView()" id="view-toggle">📅</button>
+            <h1>Расписание</h1>
+            <div class="header-actions">
+                <button class="icon-btn" id="refresh-btn" aria-label="Обновить расписание" title="Обновить">🔄</button>
+                <button class="icon-btn" id="theme-btn" aria-label="Переключить тему" title="Тема">🌓</button>
+                <button class="icon-btn" id="view-toggle" aria-label="День / неделя" title="День / неделя">📅</button>
             </div>
         </div>
-        <select id="group-select" class="group-selector" style="display:none;" onchange="changeGroup(this.value)"></select>
+        <div class="updated-label" id="updated-label">Загрузка…</div>
+        <select id="group-select" class="group-selector" style="display:none;" aria-label="Выбор группы"></select>
     </div>
 
     <div class="content" id="content">
         <div class="loader">Загрузка данных...</div>
     </div>
 
+    <div class="ios-hint" id="ios-hint">
+        <span><b>Совет:</b> нажмите «Поделиться» → «На экран "Домой"», чтобы установить приложение.</span>
+        <button class="ios-hint-close" id="ios-hint-close" aria-label="Скрыть подсказку">✕</button>
+    </div>
+
     <div class="bottom-nav">
-        <div class="nav-item active" onclick="switchTab('schedule')" id="nav-schedule">
+        <div class="nav-item active" data-tab="schedule" id="nav-schedule" role="button" tabindex="0">
             <span class="nav-icon">📚</span>
             <span>Расписание</span>
         </div>
-        <div class="nav-item" onclick="switchTab('attendance')" id="nav-attendance">
+        <div class="nav-item" data-tab="attendance" id="nav-attendance" role="button" tabindex="0">
             <span class="nav-icon">📊</span>
             <span>Посещаемость</span>
         </div>
-        <div class="nav-item" onclick="switchTab('settings')" id="nav-settings">
+        <div class="nav-item" data-tab="settings" id="nav-settings" role="button" tabindex="0">
             <span class="nav-icon">⚙️</span>
             <span>Настройки</span>
         </div>
     </div>
 
-    <div class="ios-hint" id="ios-hint">
-        <b>Совет:</b> Нажмите «Поделиться» и выберите «На экран "Домой"», чтобы установить приложение.
-    </div>
-
-    <script src="app.js"></script>
+    <input type="file" id="import-file" accept=".json,application/json" hidden>
 </body>
 </html>
