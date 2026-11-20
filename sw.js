@@ -1,8 +1,8 @@
-/* Расписание НПК — Service Worker v2
+/* Расписание НПК — Service Worker v3
    Стратегия: network-first + офлайн-фолбэк на кэш.
    Кэшируются и ответы прокси -> офлайн показывает последнее реальное расписание. */
 
-const CACHE = 'college-cache-v2';
+const CACHE = 'college-cache-v3';
 const PRECACHE = [
     './',
     './index.html',
