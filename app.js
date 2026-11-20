@@ -1,9 +1,9 @@
-/* Расписание НПК — app.js v4.0 */
+/* Расписание НПК — app.js v4.1 */
 
 const SITE_URL = 'https://politech-nsk.ru/index.php/studentam';
 const BASE_URL = 'https://politech-nsk.ru';
 const PROXY = 'https://schedule-proxy.ivanushca99.workers.dev/?url=';
-const APP_VERSION = '4.0';
+const APP_VERSION = '4.1';
 
 const DAYS = ['ВОСКРЕСЕНЬЕ', 'ПОНЕДЕЛЬНИК', 'ВТОРНИК', 'СРЕДА', 'ЧЕТВЕРГ', 'ПЯТНИЦА', 'СУББОТА'];
 const WEEK_DAYS = ['ПОНЕДЕЛЬНИК', 'ВТОРНИК', 'СРЕДА', 'ЧЕТВЕРГ', 'ПЯТНИЦА', 'СУББОТА'];
@@ -564,20 +564,24 @@ function createLessonCard(l, dateObj, isToday, st) {
     if (st && st.state === 'now') chip = '<span class="chip chip-now">идёт сейчас</span>';
     else if (st && st.state === 'next') chip = '<span class="chip chip-next">через ' + formatMins(st.mins) + '</span>';
 
-    let metaHtml = '';
-    if (l.teacher) metaHtml += '<span class="lesson-teacher">👤 ' + esc(l.teacher) + '</span>';
+    const timeParts = String(l.time).split('/').map(s => s.trim()).filter(Boolean);
+    const timeHtml = timeParts.map(t => '<span>' + esc(t) + '</span>').join('');
+    const numLabel = /^\d+$/.test(String(l.num)) ? 'Пара ' + l.num : '•';
+    const metaHtml = l.teacher ? '<div class="lesson-meta"><span class="lesson-teacher">' + esc(l.teacher) + '</span></div>' : '';
 
     card.innerHTML = `
         <div class="lesson-time-block">
-            <div class="lesson-num">${esc(l.num || '•')}</div>
-            <div class="lesson-time">${esc(l.time)}</div>
+            <div class="lesson-num">${esc(numLabel)}</div>
+            <div class="lesson-time">${timeHtml}</div>
         </div>
         <div class="lesson-info">
             <div class="lesson-subject">${esc(l.subject)} ${chip}</div>
-            <div class="lesson-meta">${metaHtml}</div>
+            ${metaHtml}
         </div>
-        ${l.room ? `<span class="room-badge">${esc(l.room)}</span>` : ''}
-        <button class="attendance-btn" style="color: ${statusColor}" aria-label="Отметить посещение за ${dateToStr(dateObj)}">${statusIcon}</button>
+        <div class="lesson-side">
+            ${l.room ? `<span class="room-badge">${esc(l.room)}</span>` : ''}
+            <button class="attendance-btn" style="color: ${statusColor}" aria-label="Отметить посещение за ${dateToStr(dateObj)}">${statusIcon}</button>
+        </div>
     `;
 
     const btn = card.querySelector('.attendance-btn');
