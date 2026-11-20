@@ -22,11 +22,11 @@
 <body>
     <div class="header">
         <div class="header-top">
-            <h1>Расписание</h1>
+            <h1>Расписание НПК</h1>
             <div class="header-actions">
                 <button class="icon-btn" id="refresh-btn" aria-label="Обновить расписание" title="Обновить">🔄</button>
-                <button class="icon-btn" id="theme-btn" aria-label="Переключить тему" title="Тема">🌓</button>
                 <button class="icon-btn" id="view-toggle" aria-label="День / неделя" title="День / неделя">📅</button>
+                <button class="icon-btn" id="theme-btn" aria-label="Настройки" title="Настройки">⚙️</button>
             </div>
         </div>
         <div class="updated-label" id="updated-label">Загрузка…</div>
@@ -44,19 +44,14 @@
 
     <div class="bottom-nav">
         <div class="nav-item active" data-tab="schedule" id="nav-schedule" role="button" tabindex="0">
-            <span class="nav-icon">📚</span>
-            <span>Расписание</span>
+            <span class="nav-icon">📚</span><span>Расписание</span>
         </div>
         <div class="nav-item" data-tab="attendance" id="nav-attendance" role="button" tabindex="0">
-            <span class="nav-icon">📊</span>
-            <span>Посещаемость</span>
+            <span class="nav-icon">📊</span><span>Посещаемость</span>
         </div>
         <div class="nav-item" data-tab="settings" id="nav-settings" role="button" tabindex="0">
-            <span class="nav-icon">⚙️</span>
-            <span>Настройки</span>
+            <span class="nav-icon">⚙️</span><span>Настройки</span>
         </div>
     </div>
-
-    <input type="file" id="import-file" accept=".json,application/json" hidden>
 </body>
 </html>
