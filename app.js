@@ -1,34 +1,55 @@
-// Маскируем ссылки
-const SITE_URL = 'https://' + 'politech-nsk.ru/index.php/studentam';
-const BASE_URL = 'https://' + 'politech-nsk.ru';
-const PROXY = 'https://' + 'schedule-proxy.ivanushca99.workers.dev/?url=';
+// Константы
+const SITE_URL = 'https://politech-nsk.ru/index.php/studentam';
+const BASE_URL = 'https://politech-nsk.ru';
+const PROXY = 'https://schedule-proxy.ivanushca99.workers.dev/?url=';
 
+// Состояние
 let groupsDatabase = {}; 
 let groupsList = [];
 let selectedGroupIndex = 0;
 let currentViewMode = 'day'; // 'day' или 'week'
+let currentTab = 'schedule'; // 'schedule', 'attendance', 'settings'
+let attendanceData = JSON.parse(localStorage.getItem('attendance')) || {};
 
 document.addEventListener('DOMContentLoaded', () => {
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
     if (/iPad|iPhone|iPod/.test(navigator.userAgent)) {
-        const hint = document.getElementById('ios-hint');
-        if (hint) hint.style.display = 'block';
+        document.getElementById('ios-hint').style.display = 'block';
     }
+    
+    // Восстановление темы
+    if (localStorage.getItem('theme') === 'light') {
+        document.body.classList.add('light');
+    }
+    
     loadAllSchedules();
 });
 
+// --- НАВИГАЦИЯ ---
+function switchTab(tab) {
+    currentTab = tab;
+    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+    document.getElementById(`nav-${tab}`).classList.add('active');
+    
+    // Скрываем/показываем элементы шапки
+    document.getElementById('group-select').style.display = tab === 'schedule' ? 'block' : 'none';
+    document.getElementById('view-toggle').style.display = tab === 'schedule' ? 'inline' : 'none';
+
+    renderCurrentTab();
+}
+
+function toggleTheme() {
+    document.body.classList.toggle('light');
+    localStorage.setItem('theme', document.body.classList.contains('light') ? 'light' : 'dark');
+}
+
 function toggleView() {
+    if (currentTab !== 'schedule') return;
     currentViewMode = currentViewMode === 'day' ? 'week' : 'day';
-    document.getElementById('view-toggle').textContent = currentViewMode === 'day' ? 'На неделю' : 'На сегодня';
     renderSchedule();
 }
 
-function changeGroup(val) {
-    selectedGroupIndex = parseInt(val);
-    localStorage.setItem('selectedGroupName', groupsList[selectedGroupIndex].name);
-    renderSchedule();
-}
-
+// --- ЗАГРУЗКА ДАННЫХ ---
 async function loadAllSchedules() {
     try {
         const response = await fetch(PROXY + encodeURIComponent(SITE_URL));
@@ -46,12 +67,12 @@ async function loadAllSchedules() {
             }
         }
 
-        if (excelUrls.length === 0) throw new Error("Файлы не найдены на сайте");
+        if (excelUrls.length === 0) throw new Error("Файлы не найдены");
         
         let count = 0;
         for (let url of excelUrls) {
             count++;
-            document.getElementById('content').innerHTML = `<div class="loader">Загрузка файла (${count}/${excelUrls.length})...</div>`;
+            document.getElementById('content').innerHTML = `<div class="loader">Загрузка (${count}/${excelUrls.length})...</div>`;
             try {
                 const fileRes = await fetch(PROXY + encodeURIComponent(url));
                 const arrayBuffer = await fileRes.arrayBuffer();
@@ -59,7 +80,7 @@ async function loadAllSchedules() {
             } catch (e) { console.warn("Ошибка файла: " + url, e); }
         }
 
-        if (groupsList.length === 0) throw new Error("Группы не найдены в файлах");
+        if (groupsList.length === 0) throw new Error("Группы не найдены");
 
         groupsList.sort((a, b) => a.course - b.course || a.name.localeCompare(b.name));
         populateGroupSelector();
@@ -72,11 +93,12 @@ async function loadAllSchedules() {
                 document.getElementById('group-select').value = selectedGroupIndex;
             }
         }
-        renderSchedule();
+        
+        switchTab('schedule'); // Открываем вкладку по умолчанию
 
     } catch (e) {
         console.error(e);
-        showError("Ошибка загрузки данных. Проверьте интернет.");
+        document.getElementById('content').innerHTML = `<div class="error">Ошибка: ${e.message}</div>`;
     }
 }
 
@@ -134,8 +156,19 @@ function populateGroupSelector() {
         opt.textContent = g.name;
         optgroup.appendChild(opt);
     });
+}
 
-    select.style.display = 'block';
+function changeGroup(val) {
+    selectedGroupIndex = parseInt(val);
+    localStorage.setItem('selectedGroupName', groupsList[selectedGroupIndex].name);
+    renderSchedule();
+}
+
+// --- РЕНДЕРИНГ ---
+function renderCurrentTab() {
+    if (currentTab === 'schedule') renderSchedule();
+    else if (currentTab === 'attendance') renderAttendance();
+    else if (currentTab === 'settings') renderSettings();
 }
 
 function renderSchedule() {
@@ -167,7 +200,7 @@ function renderSchedule() {
         }
 
         if (displayLessons.length === 0) {
-            content.innerHTML = '<div class="empty-msg">Занятий нет. Отдыхай!</div>';
+            content.innerHTML = '<div class="empty-msg">Занятий нет</div>';
             return;
         }
 
@@ -178,7 +211,6 @@ function renderSchedule() {
         content.appendChild(dayBlock);
 
     } else {
-        // Режим "Неделя"
         const daysOrder = ["ПОНЕДЕЛЬНИК", "ВТОРНИК", "СРЕДА", "ЧЕТВЕРГ", "ПЯТНИЦА", "СУББОТА"];
         const todayName = ["ВОСКРЕСЕНЬЕ", "ПОНЕДЕЛЬНИК", "ВТОРНИК", "СРЕДА", "ЧЕТВЕРГ", "ПЯТНИЦА", "СУББОТА"][new Date().getDay()];
         
@@ -196,9 +228,7 @@ function renderSchedule() {
             }
         });
 
-        if (!hasAny) {
-            content.innerHTML = '<div class="empty-msg">На эту неделю занятий нет.</div>';
-        }
+        if (!hasAny) content.innerHTML = '<div class="empty-msg">На неделю пар нет</div>';
     }
 }
 
@@ -206,11 +236,20 @@ function createLessonCard(l, isToday) {
     const card = document.createElement('div');
     card.className = `lesson-card ${isToday ? 'today' : ''}`;
     
+    // Проверяем посещаемость
+    const dateStr = getTodayString();
+    const record = attendanceData[`${dateStr}_${l.subject}`];
+    let statusIcon = '⚪';
+    let statusColor = 'var(--text-muted)';
+    if (record === 'present') { statusIcon = '✅'; statusColor = 'var(--success)'; }
+    else if (record === 'half') { statusIcon = '🟡'; statusColor = 'var(--warning)'; }
+    else if (record === 'absent') { statusIcon = '❌'; statusColor = 'var(--danger)'; }
+
     let metaHtml = '';
     if (l.teacher) metaHtml += `<span>${l.teacher}</span>`;
     if (l.room) metaHtml += `<span class="room-badge">ауд. ${l.room}</span>`;
 
-    let displayTime = l.time.split('/')[0].split('-')[0].trim();
+    let displayTime = l.time.split('/')[0].trim();
 
     card.innerHTML = `
         <div class="lesson-time-block">
@@ -221,8 +260,113 @@ function createLessonCard(l, isToday) {
             <div class="lesson-subject">${l.subject}</div>
             <div class="lesson-meta">${metaHtml}</div>
         </div>
+        ${isToday ? `<button class="attendance-btn" style="color: ${statusColor}" onclick="markAttendance('${l.subject}', '${l.num}')">${statusIcon}</button>` : ''}
     `;
     return card;
+}
+
+// --- ПОСЕЩАЕМОСТЬ ---
+function getTodayString() {
+    let d = new Date();
+    return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`;
+}
+
+function markAttendance(subject, num) {
+    const dateStr = getTodayString();
+    const key = `${dateStr}_${subject}`;
+    
+    const statuses = ['present', 'half', 'absent', null];
+    let current = attendanceData[key] || null;
+    let nextIndex = (statuses.indexOf(current) + 1) % statuses.length;
+    let nextStatus = statuses[nextIndex];
+    
+    if (nextStatus) attendanceData[key] = nextStatus;
+    else delete attendanceData[key];
+    
+    localStorage.setItem('attendance', JSON.stringify(attendanceData));
+    renderSchedule(); // Перерисовываем
+}
+
+function renderAttendance() {
+    const content = document.getElementById('content');
+    content.innerHTML = '<h2 style="margin-bottom:16px;">Посещаемость</h2>';
+    
+    const stats = {};
+    for (const [key, status] of Object.entries(attendanceData)) {
+        const subject = key.split('_')[1];
+        if (!stats[subject]) stats[subject] = { present: 0, total: 0 };
+        stats[subject].total++;
+        if (status === 'present') stats[subject].present += 1;
+        else if (status === 'half') stats[subject].present += 0.5;
+    }
+    
+    const subjects = Object.keys(stats).sort();
+    if (subjects.length === 0) {
+        content.innerHTML += '<div class="empty-msg">Нет данных. Отметьте пары в расписании.</div>';
+        return;
+    }
+    
+    subjects.forEach(sub => {
+        const s = stats[sub];
+        const percent = s.total === 0 ? 0 : Math.round((s.present / s.total) * 100);
+        const color = percent >= 70 ? 'var(--success)' : 'var(--danger)';
+        
+        const card = document.createElement('div');
+        card.className = 'lesson-card';
+        card.style.borderLeftColor = color;
+        card.innerHTML = `
+            <div class="lesson-info">
+                <div style="display:flex; justify-content:space-between;">
+                    <div class="lesson-subject">${sub}</div>
+                    <div style="font-weight:bold; color:${color};">${percent}%</div>
+                </div>
+                <div style="background:var(--border); height:6px; border-radius:3px; margin-top:8px; overflow:hidden;">
+                    <div style="background:${color}; width:${percent}%; height:100%;"></div>
+                </div>
+                <div class="lesson-meta" style="margin-top:6px;">Посещено: ${s.present} из ${s.total}</div>
+            </div>
+        `;
+        content.appendChild(card);
+    });
+}
+
+// --- НАСТРОЙКИ ---
+function renderSettings() {
+    const content = document.getElementById('content');
+    content.innerHTML = `
+        <h2 style="margin-bottom:16px;">Настройки</h2>
+        
+        <div class="settings-group">
+            <div class="settings-title">Тема оформления</div>
+            <div class="settings-row" onclick="toggleTheme()">
+                <span>Светлая / Тёмная</span>
+                <span style="font-size:20px;">🌓</span>
+            </div>
+        </div>
+
+        <div class="settings-group">
+            <div class="settings-title">Группа</div>
+            <div class="settings-row">
+                <span>Текущая группа</span>
+                <span style="color:var(--accent); font-weight:bold;">${groupsList[selectedGroupIndex]?.name || 'Не выбрана'}</span>
+            </div>
+            <div style="font-size:12px; color:var(--text-muted); margin-top:8px;">
+                Чтобы сменить группу, вернитесь на вкладку «Расписание» и выберите нужную в выпадающем списке.
+            </div>
+        </div>
+        
+        <div class="settings-group">
+            <div class="settings-title">О приложении</div>
+            <div class="settings-row">
+                <span>Версия</span>
+                <span>Web 1.0</span>
+            </div>
+            <div class="settings-row">
+                <span>Разработчик</span>
+                <span>CollegeApp</span>
+            </div>
+        </div>
+    `;
 }
 
 // --- ЛОГИКА ПОИСКА (КАК В ANDROID) ---
@@ -282,9 +426,7 @@ function findLessons(rawData, startRow, groupCol, targetDayName) {
 
             let isNextRowNewPair = num2 && num2.match(/^\d{1,2}$/) && num2 !== num1;
             let finalTimes = time1;
-            if (!isNextRowNewPair && time2 && time2 !== time1) {
-                finalTimes = time1 + " / " + time2;
-            }
+            if (!isNextRowNewPair && time2 && time2 !== time1) finalTimes = time1 + " / " + time2;
 
             let lessonNum = num1 || num2;
             let rowsToScan = isNextRowNewPair ? [r] : [r, r+1];
@@ -310,16 +452,10 @@ function findLessons(rawData, startRow, groupCol, targetDayName) {
                 }
             }
 
-            if (subject) {
-                lessons.push({ num: lessonNum, time: finalTimes, subject, teacher, room });
-            }
+            if (subject) lessons.push({ num: lessonNum, time: finalTimes, subject, teacher, room });
             
             if (!isNextRowNewPair && time2) r++; 
         }
     }
     return lessons;
-}
-
-function showError(msg) {
-    document.getElementById('content').innerHTML = `<div class="error">${msg}</div>`;
 }
