@@ -1,14 +1,13 @@
-/* Расписание НПК — app.js v3.0 */
+/* Расписание НПК — app.js v4.0 */
 
 const SITE_URL = 'https://politech-nsk.ru/index.php/studentam';
 const BASE_URL = 'https://politech-nsk.ru';
 const PROXY = 'https://schedule-proxy.ivanushca99.workers.dev/?url=';
-const APP_VERSION = '3.0';
+const APP_VERSION = '4.0';
 
 const DAYS = ['ВОСКРЕСЕНЬЕ', 'ПОНЕДЕЛЬНИК', 'ВТОРНИК', 'СРЕДА', 'ЧЕТВЕРГ', 'ПЯТНИЦА', 'СУББОТА'];
 const WEEK_DAYS = ['ПОНЕДЕЛЬНИК', 'ВТОРНИК', 'СРЕДА', 'ЧЕТВЕРГ', 'ПЯТНИЦА', 'СУББОТА'];
 
-// Расписание звонков (из нативной таблицы колледжа)
 const BELLS = [
     { num: 1, halves: ['8:30 - 9:15', '9:25 - 10:10'] },
     { num: 2, halves: ['10:30 - 11:15', '11:25 - 12:10'] },
@@ -57,16 +56,16 @@ function esc(s) {
     }[c]));
 }
 
-function getTodayString() {
-    const d = new Date();
-    const p = n => String(n).padStart(2, '0');
-    return p(d.getDate()) + '.' + p(d.getMonth() + 1) + '.' + d.getFullYear();
-}
+function pad2(n) { return String(n).padStart(2, '0'); }
+function dateToStr(d) { return pad2(d.getDate()) + '.' + pad2(d.getMonth() + 1) + '.' + d.getFullYear(); }
+function shortDate(d) { return pad2(d.getDate()) + '.' + pad2(d.getMonth() + 1); }
+function addDays(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
+function weekMonday() { const d = new Date(); return addDays(d, -((d.getDay() + 6) % 7)); }
+function getTodayString() { return dateToStr(new Date()); }
 
 function formatDateShort(ts) {
     const d = new Date(ts);
-    const p = n => String(n).padStart(2, '0');
-    return p(d.getDate()) + '.' + p(d.getMonth() + 1) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+    return shortDate(d) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
 }
 
 function formatAgo(ts) {
@@ -88,7 +87,7 @@ function agoText() {
     return groupsList.length ? 'из кэша' : '—';
 }
 
-/* ---------- Темы: light / dark / oled ---------- */
+/* ---------- Темы ---------- */
 
 function currentTheme() {
     const t = localStorage.getItem('theme');
@@ -125,9 +124,7 @@ function initIOSHint() {
 function switchTab(tab) {
     currentTab = tab;
     document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.tab === tab));
-    const isSchedule = tab === 'schedule';
-    document.getElementById('group-select').style.display = isSchedule && groupsList.length ? 'block' : 'none';
-    document.getElementById('view-toggle').style.display = isSchedule ? 'inline-block' : 'none';
+    document.getElementById('view-toggle').style.display = tab === 'schedule' ? 'inline-block' : 'none';
     renderCurrentTab();
 }
 
@@ -144,7 +141,7 @@ function renderCurrentTab() {
     else if (currentTab === 'settings') renderSettings();
 }
 
-/* ---------- Курс по номеру группы (учебный год с сентября) ---------- */
+/* ---------- Курс ---------- */
 
 function detectCourse(groupName, now) {
     now = now || new Date();
@@ -232,7 +229,6 @@ async function refreshSchedules() {
             saveSnapshot();
         }
 
-        populateGroupSelector();
         restoreSelectedGroup();
         switchTab(currentTab);
     } catch (e) {
@@ -258,14 +254,13 @@ function enableDemoMode() {
     demoMode = true;
     sheets = [[
         ['День', 'Пара', 'Время', 'Группа'],
-        ['ПОНЕДЕЛЬНИК', '1', '8:30 - 9:15', 'Демо-предмет'],
-        ['ВТОРНИК', '2', '10:30 - 11:15', 'Демо-предмет']
+        ['ПОНЕДЕЛЬНИК', '1', '8:30 - 9:15', 'Демо-предмет', 'Боцман А.Д.', '305'],
+        ['ВТОРНИК', '2', '10:30 - 11:15', 'Демо-предмет', 'Сологуб И.М.', '406']
     ]];
     groupsDatabase = { '224 СА (Демо)': { sheetId: 0, rowIndex: 1, colIndex: 3 } };
     groupsList = [{ name: '224 СА (Демо)', course: 2 }];
     selectedGroupIndex = 0;
     statusBanner = { type: 'error', text: 'Сайт колледжа временно недоступен. Показано демо-расписание.' };
-    populateGroupSelector();
     restoreSelectedGroup();
     switchTab(currentTab);
 }
@@ -306,32 +301,6 @@ function loadSnapshot() {
 
 /* ---------- Выбор группы ---------- */
 
-function populateGroupSelector() {
-    const select = document.getElementById('group-select');
-    select.innerHTML = '';
-    let currentCourse = -1;
-    let optgroup = null;
-    groupsList.forEach((g, i) => {
-        if (g.course !== currentCourse) {
-            currentCourse = g.course;
-            optgroup = document.createElement('optgroup');
-            optgroup.label = g.course ? g.course + ' курс' : 'Другие';
-            select.appendChild(optgroup);
-        }
-        const opt = document.createElement('option');
-        opt.value = String(i);
-        opt.textContent = g.name;
-        optgroup.appendChild(opt);
-    });
-    select.style.display = currentTab === 'schedule' ? 'block' : 'none';
-    select.onchange = () => {
-        selectedGroupIndex = parseInt(select.value, 10) || 0;
-        const g = groupsList[selectedGroupIndex];
-        if (g) localStorage.setItem('selectedGroupName', g.name);
-        renderSchedule();
-    };
-}
-
 function restoreSelectedGroup() {
     const saved = localStorage.getItem('selectedGroupName');
     if (saved) {
@@ -339,10 +308,60 @@ function restoreSelectedGroup() {
         if (idx !== -1) selectedGroupIndex = idx;
     }
     if (selectedGroupIndex >= groupsList.length) selectedGroupIndex = 0;
-    document.getElementById('group-select').value = String(selectedGroupIndex);
+    const cur = groupsList[selectedGroupIndex];
+    if (cur && courseFilter !== 'all' && String(cur.course) !== courseFilter) {
+        courseFilter = String(cur.course);
+    }
+    if (courseFilter !== 'all' && !groupsList.some(g => String(g.course) === courseFilter)) {
+        courseFilter = 'all';
+    }
 }
 
-/* ---------- Баннер статуса ---------- */
+function selectGroup(i) {
+    if (!groupsList[i]) return;
+    selectedGroupIndex = i;
+    localStorage.setItem('selectedGroupName', groupsList[i].name);
+    const byCourse = loadJSON('lastGroupByCourse', {});
+    byCourse[String(groupsList[i].course)] = groupsList[i].name;
+    try { localStorage.setItem('lastGroupByCourse', JSON.stringify(byCourse)); } catch (e) {}
+    const old = document.getElementById('groups-row');
+    if (old) {
+        old.replaceWith(renderGroupsRow());
+        scrollActiveGroupIntoView();
+    }
+    renderScheduleResults();
+}
+
+function renderGroupsRow() {
+    const row = document.createElement('div');
+    row.className = 'groups-row';
+    row.id = 'groups-row';
+    const list = groupsList
+        .map((g, i) => ({ g: g, i: i }))
+        .filter(x => courseFilter === 'all' || String(x.g.course) === courseFilter);
+    if (!list.length) {
+        row.innerHTML = '<div class="groups-empty">Нет групп этого курса</div>';
+        return row;
+    }
+    list.forEach(x => {
+        const b = document.createElement('button');
+        b.className = 'group-pill' + (x.i === selectedGroupIndex ? ' active' : '');
+        b.textContent = x.g.name;
+        b.addEventListener('click', () => selectGroup(x.i));
+        row.appendChild(b);
+    });
+    return row;
+}
+
+function scrollActiveGroupIntoView() {
+    const row = document.getElementById('groups-row');
+    if (!row) return;
+    const active = row.querySelector('.group-pill.active');
+    if (!active) return;
+    row.scrollLeft = Math.max(0, active.offsetLeft - (row.clientWidth - active.clientWidth) / 2);
+}
+
+/* ---------- Баннер ---------- */
 
 function makeBanner(b) {
     const div = document.createElement('div');
@@ -352,7 +371,7 @@ function makeBanner(b) {
     return div;
 }
 
-/* ---------- Фильтр по курсу + поиск ---------- */
+/* ---------- Курсовые чипы + поиск ---------- */
 
 function visibleLessons(lessons) {
     const q = searchQuery.trim().toLowerCase();
@@ -377,13 +396,15 @@ function renderCourseChips() {
             courseFilter = val;
             localStorage.setItem('courseFilter', val);
             if (val !== 'all') {
-                const inCourse = groupsList[selectedGroupIndex] && String(groupsList[selectedGroupIndex].course) === val;
-                if (!inCourse) {
-                    const idx = groupsList.findIndex(g => String(g.course) === val);
+                const cur = groupsList[selectedGroupIndex];
+                if (!cur || String(cur.course) !== val) {
+                    const byCourse = loadJSON('lastGroupByCourse', {});
+                    let idx = -1;
+                    if (byCourse[val]) idx = groupsList.findIndex(g => g.name === byCourse[val] && String(g.course) === val);
+                    if (idx === -1) idx = groupsList.findIndex(g => String(g.course) === val);
                     if (idx !== -1) {
                         selectedGroupIndex = idx;
                         localStorage.setItem('selectedGroupName', groupsList[idx].name);
-                        document.getElementById('group-select').value = String(idx);
                     }
                 }
             }
@@ -415,14 +436,17 @@ function renderSchedule() {
     content.innerHTML = '';
     if (statusBanner) content.appendChild(makeBanner(statusBanner));
     content.appendChild(renderCourseChips());
+    content.appendChild(renderGroupsRow());
     content.appendChild(renderSearchRow());
     const results = document.createElement('div');
     results.id = 'schedule-results';
     content.appendChild(results);
     renderScheduleResults();
+    requestAnimationFrame(scrollActiveGroupIntoView);
 }
 
 function renderScheduleResults() {
+    closeMenus();
     const results = document.getElementById('schedule-results');
     if (!results) return;
     const group = groupsList[selectedGroupIndex];
@@ -460,7 +484,7 @@ function renderDayView(content, rawData, g) {
     });
 
     if (todayLessons.length && (!allEnded || showTodayOverride || searching)) {
-        appendDayBlock(content, DAYS[todayIdx], todayLessons, true, nowMin);
+        appendDayBlock(content, DAYS[todayIdx], todayLessons, now, true, nowMin);
         return;
     }
 
@@ -476,7 +500,7 @@ function renderDayView(content, rawData, g) {
         const idx = (todayIdx + off) % 7;
         const lessons = findLessons(rawData, g.rowIndex, g.colIndex, DAYS[idx]);
         if (lessons.length) {
-            appendDayBlock(content, DAYS[idx] + (off === 1 ? ' (завтра)' : ''), lessons, false, nowMin);
+            appendDayBlock(content, DAYS[idx] + (off === 1 ? ' (завтра)' : ''), lessons, addDays(now, off), false, nowMin);
             return;
         }
     }
@@ -484,26 +508,29 @@ function renderDayView(content, rawData, g) {
 }
 
 function renderWeekView(content, rawData, g) {
+    const monday = weekMonday();
+    const todayStr = getTodayString();
     const now = new Date();
-    const todayName = DAYS[now.getDay()];
     const nowMin = now.getHours() * 60 + now.getMinutes();
     let hasAny = false;
-    WEEK_DAYS.forEach(dayName => {
+    WEEK_DAYS.forEach((dayName, i) => {
+        const date = addDays(monday, i);
         const lessons = findLessons(rawData, g.rowIndex, g.colIndex, dayName);
         if (lessons.length) {
             hasAny = true;
-            appendDayBlock(content, dayName, lessons, dayName === todayName, nowMin);
+            appendDayBlock(content, dayName, lessons, date, dateToStr(date) === todayStr, nowMin);
         }
     });
     if (!hasAny) content.insertAdjacentHTML('beforeend', '<div class="empty-msg">На неделю пар нет</div>');
 }
 
-function appendDayBlock(content, label, lessons, isToday, nowMin) {
+function appendDayBlock(content, label, lessons, dateObj, isToday, nowMin) {
     const shown = visibleLessons(lessons);
-    if (!shown.length) return; // при поиске пустые дни скрываем
+    if (!shown.length) return;
     const block = document.createElement('div');
     block.className = 'day-block';
-    block.innerHTML = '<div class="day-title ' + (isToday ? 'today' : '') + '">' + esc(label) + '</div>';
+    block.innerHTML = '<div class="day-title ' + (isToday ? 'today' : '') + '">' + esc(label) +
+        ' <span class="day-date">· ' + shortDate(dateObj) + '</span></div>';
     let nextMarked = false;
     lessons.forEach(l => {
         let st = null;
@@ -516,16 +543,16 @@ function appendDayBlock(content, label, lessons, isToday, nowMin) {
                 else if (start > nowMin && !nextMarked) { st = { state: 'next', mins: start - nowMin }; nextMarked = true; }
             }
         }
-        if (shown.includes(l)) block.appendChild(createLessonCard(l, isToday, st));
+        if (shown.includes(l)) block.appendChild(createLessonCard(l, dateObj, isToday, st));
     });
     content.appendChild(block);
 }
 
-function createLessonCard(l, isToday, st) {
+function createLessonCard(l, dateObj, isToday, st) {
     const card = document.createElement('div');
     card.className = 'lesson-card' + (isToday ? ' today' : '') + (st && st.state === 'now' ? ' now' : '');
 
-    const uniqueId = getTodayString() + '_' + l.subject + '_' + l.time + '_' + l.num;
+    const uniqueId = dateToStr(dateObj) + '_' + l.subject + '_' + l.time + '_' + l.num;
     const record = attendanceData[uniqueId];
 
     let statusIcon = '⚪', statusColor = 'var(--text-muted)';
@@ -538,7 +565,7 @@ function createLessonCard(l, isToday, st) {
     else if (st && st.state === 'next') chip = '<span class="chip chip-next">через ' + formatMins(st.mins) + '</span>';
 
     let metaHtml = '';
-    if (l.teacher) metaHtml += '<span>' + esc(l.teacher) + '</span>';
+    if (l.teacher) metaHtml += '<span class="lesson-teacher">👤 ' + esc(l.teacher) + '</span>';
 
     card.innerHTML = `
         <div class="lesson-time-block">
@@ -550,21 +577,43 @@ function createLessonCard(l, isToday, st) {
             <div class="lesson-meta">${metaHtml}</div>
         </div>
         ${l.room ? `<span class="room-badge">${esc(l.room)}</span>` : ''}
-        ${isToday ? `<button class="attendance-btn" style="color: ${statusColor}" aria-label="Отметить посещение">${statusIcon}</button>` : ''}
+        <button class="attendance-btn" style="color: ${statusColor}" aria-label="Отметить посещение за ${dateToStr(dateObj)}">${statusIcon}</button>
     `;
 
     const btn = card.querySelector('.attendance-btn');
-    if (btn) btn.addEventListener('click', () => openStatusMenu(btn, uniqueId));
+    btn.addEventListener('click', () => openStatusMenu(btn, uniqueId, dateObj, isToday, l.subject));
     return card;
 }
 
-/* ---------- Меню статуса посещения ---------- */
+/* ---------- Меню статуса + подтверждение для других дней ---------- */
 
 function closeMenus() {
     document.querySelectorAll('.menu-backdrop').forEach(el => el.remove());
 }
 
-function openStatusMenu(anchor, uniqueId) {
+function applyStatus(uniqueId, val) {
+    if (val) attendanceData[uniqueId] = val;
+    else delete attendanceData[uniqueId];
+    saveAttendance();
+    if (navigator.vibrate) { try { navigator.vibrate(10); } catch (e) {} }
+    renderScheduleResults();
+}
+
+function confirmStatusChange(uniqueId, val, dateObj, subject) {
+    const labels = { present: ['✅', 'Посещено'], half: ['🟡', 'Половина'], absent: ['❌', 'Пропущено'] };
+    const info = val ? labels[val] : ['⚪', 'Убрать отметку'];
+    openModal('Подтверждение изменения', `
+        <div class="confirm-card">
+            <div class="confirm-date">${dateToStr(dateObj)} · ${DAYS[dateObj.getDay()]}</div>
+            <div class="confirm-lesson">${esc(subject)}</div>
+            <div class="confirm-status">${info[0]} ${info[1]}</div>
+        </div>
+        <div class="modal-note">Это не сегодняшний день — подтвердите изменение отметки.</div>`);
+    modalButton('Отмена', false, closeModal);
+    modalButton('Подтвердить', true, () => { applyStatus(uniqueId, val); closeModal(); });
+}
+
+function openStatusMenu(anchor, uniqueId, dateObj, isToday, subject) {
     closeMenus();
     const backdrop = document.createElement('div');
     backdrop.className = 'menu-backdrop';
@@ -584,12 +633,9 @@ function openStatusMenu(anchor, uniqueId) {
         row.innerHTML = '<span class="status-ico">' + icon + '</span><span>' + label + '</span>';
         row.addEventListener('click', ev => {
             ev.stopPropagation();
-            if (val) attendanceData[uniqueId] = val;
-            else delete attendanceData[uniqueId];
-            saveAttendance();
-            if (navigator.vibrate) { try { navigator.vibrate(10); } catch (e) {} }
             closeMenus();
-            renderScheduleResults();
+            if (isToday) applyStatus(uniqueId, val);
+            else confirmStatusChange(uniqueId, val, dateObj, subject);
         });
         menu.appendChild(row);
     });
@@ -634,7 +680,7 @@ function renderAttendance() {
 
     const subjects = Object.keys(stats).sort((a, b) => a.localeCompare(b, 'ru'));
     if (!subjects.length) {
-        content.insertAdjacentHTML('beforeend', '<div class="empty-msg">Нет данных. Отметьте пары в расписании.</div>');
+        content.insertAdjacentHTML('beforeend', '<div class="empty-msg">Нет данных. Отметьте пары в расписании — на любой день недели.</div>');
         return;
     }
 
@@ -820,14 +866,15 @@ function openSettingsModal() {
         if (Number.isInteger(pendingGroupIdx) && groupsList[pendingGroupIdx]) {
             selectedGroupIndex = pendingGroupIdx;
             localStorage.setItem('selectedGroupName', groupsList[pendingGroupIdx].name);
-            document.getElementById('group-select').value = String(pendingGroupIdx);
+            const cur = groupsList[pendingGroupIdx];
+            if (courseFilter !== 'all' && String(cur.course) !== courseFilter) courseFilter = String(cur.course);
         }
         closeModal();
         renderCurrentTab();
     });
 }
 
-/* ---------- Служебные обновления UI ---------- */
+/* ---------- Служебное ---------- */
 
 function updateRefreshUI() {
     const btn = document.getElementById('refresh-btn');
@@ -855,13 +902,15 @@ function tick() {
     updateUpdatedLabel();
 }
 
-/* ---------- Парсер расписания ---------- */
+/* ---------- Парсер расписания (с извлечением преподавателя) ---------- */
+
+const TEACHER_FULL = /^[А-ЯЁа-яё][а-яё\-]*(?:-[А-ЯЁ][а-яё\-]*)?\.?\s*[А-ЯЁ]\.[А-ЯЁ]\.(?:\s*,\s*[А-ЯЁа-яё][а-яё\-]*(?:-[А-ЯЁ][а-яё\-]*)?\.?\s*[А-ЯЁ]\.[А-ЯЁ]\.)*$/;
+const TEACHER_PART = /[А-ЯЁ][а-яё]+(?:-[А-ЯЁ][а-яё]+)?\.?\s*[А-ЯЁ]\.[А-ЯЁ]\.(?:\s*,\s*[А-ЯЁ][а-яё]+(?:-[А-ЯЁ][а-яё]+)?\.?\s*[А-ЯЁ]\.[А-ЯЁ]\.)*/;
 
 function findLessons(rawData, startRow, groupCol, targetDayName) {
     const lessons = [];
     let isCurrentDay = false;
 
-    const teacherRegex = /^[А-ЯЁа-яё\-]+\.?\s*[А-ЯЁ]\.[А-ЯЁ]\.(?:\s*,\s*[А-ЯЁа-яё\-]+\.?\s*[А-ЯЁ]\.[А-ЯЁ]\.)*$/;
     const timeRegex = /\d{1,2}:\d{2}\s*[-–—]\s*\d{1,2}:\d{2}/g;
 
     for (let r = startRow; r < rawData.length; r++) {
@@ -901,15 +950,33 @@ function findLessons(rawData, startRow, groupCol, targetDayName) {
 
         let subject = '', teacher = '', room = '';
         for (const text of [...new Set(texts)]) {
-            if (teacherRegex.test(text)) { if (!teacher) teacher = text; }
-            else if (/\d{1,2}:\d{2}\s*[-–—]\s*\d{1,2}:\d{2}/.test(text)) { /* время уже собрано */ }
-            else if (text === numCellStr) { /* номер пары */ }
-            else if (/^[0-9]{1,4}[а-яА-Яa-zA-Z]?$/.test(text) || /^[0-9]{1,3}[\/][0-9]$/.test(text) ||
-                     text.toLowerCase().includes('зал') || text.toLowerCase().includes('ауд') || text.toLowerCase().includes('спорт')) {
-                if (!room) room = text;
-            } else {
-                if (text.length >= 2 && (!subject || text.length > subject.length)) subject = text;
+            if (TEACHER_FULL.test(text)) { if (!teacher) teacher = text; continue; }
+
+            let rest = text;
+            const tm = text.match(TEACHER_PART);
+            if (tm) {
+                if (!teacher) teacher = tm[0];
+                rest = text.replace(tm[0], ' ').replace(/\s+/g, ' ').trim();
+                rest = rest.replace(/^[\s,;.\-–—\/]+/, '').replace(/[\s,;\/\-–—]+$/, '');
             }
+            if (!rest) continue;
+            if (/\d{1,2}:\d{2}\s*[-–—]\s*\d{1,2}:\d{2}/.test(rest)) continue;
+            if (rest === numCellStr) continue;
+
+            if (/^[0-9]{1,4}[а-яА-Яa-zA-Z]?$/.test(rest) || /^[0-9]{1,3}[\/][0-9]$/.test(rest) ||
+                rest.toLowerCase().includes('зал') || rest.toLowerCase().includes('ауд') || rest.toLowerCase().includes('спорт')) {
+                if (!room) room = rest;
+                continue;
+            }
+
+            if (!room) {
+                const rm = rest.match(/([а-яёa-z])\s(\d{1,3}[А-ЯA-Zа-я]?)$/i);
+                if (rm) {
+                    room = rm[2];
+                    rest = rest.slice(0, rest.length - rm[2].length - 1).trim();
+                }
+            }
+            if (rest.length >= 2 && (!subject || rest.length > subject.length)) subject = rest;
         }
 
         if (subject) lessons.push({ num: numCellStr || '•', time: finalTimes, subject: subject, teacher: teacher, room: room });
@@ -927,14 +994,12 @@ document.addEventListener('DOMContentLoaded', () => {
     applyTheme();
     initIOSHint();
 
-    document.getElementById('theme-btn').addEventListener('click', openSettingsModal);
     document.getElementById('view-toggle').addEventListener('click', toggleView);
     document.getElementById('refresh-btn').addEventListener('click', () => refreshSchedules());
     document.querySelectorAll('.nav-item').forEach(el =>
         el.addEventListener('click', () => switchTab(el.dataset.tab)));
 
     if (loadSnapshot()) {
-        populateGroupSelector();
         restoreSelectedGroup();
         switchTab('schedule');
     }
