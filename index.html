@@ -16,67 +16,107 @@
 
     <style>
         :root { 
-            --bg: #121212; --surface: #1E1E1E; --text: #E6E1E5; 
-            --text-muted: #A0A0A0; --accent: #86D0FF; --border: #333333; 
-            --success: #4CAF50; --danger: #F44336;
+            --bg: #1C1B1F; --surface: #2A2A2E; --text: #E6E1E5; 
+            --text-muted: #A0A0A0; --accent: #86D0FF; --border: #3A3A3E; 
+            --success: #4CAF50; --danger: #F44336; --warning: #FFC107;
+            --nav-bg: #1C1B1F;
+        }
+        body.light {
+            --bg: #FFFFFF; --surface: #F2F3F5; --text: #1C1B1F; 
+            --text-muted: #5F6368; --accent: #00658E; --border: #E0E0E0;
+            --nav-bg: #FFFFFF;
         }
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, sans-serif; background-color: var(--bg); color: var(--text); display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, sans-serif; background-color: var(--bg); color: var(--text); display: flex; flex-direction: column; height: 100vh; overflow: hidden; padding-bottom: env(safe-area-inset-bottom); }
         
-        .header { padding: 15px 20px; background: var(--surface); display: flex; flex-direction: column; gap: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); z-index: 10; }
+        /* Верхняя панель */
+        .header { padding: 15px 20px; background: var(--bg); display: flex; flex-direction: column; gap: 12px; z-index: 10; border-bottom: 1px solid var(--border); }
         .header-top { display: flex; justify-content: space-between; align-items: center; }
-        .header h1 { margin: 0; font-size: 20px; font-weight: 600; }
-        .header-actions { display: flex; gap: 8px; }
-        .icon-btn { background: var(--bg); color: var(--accent); border: 1px solid var(--border); padding: 8px 12px; border-radius: 8px; font-size: 14px; cursor: pointer; font-weight: bold; }
-        .group-select { width: 100%; box-sizing: border-box; background: var(--bg); color: var(--accent); border: 1px solid var(--border); padding: 12px 15px; border-radius: 10px; font-size: 16px; font-weight: 500; outline: none; appearance: none; }
+        .header h1 { margin: 0; font-size: 20px; font-weight: 600; color: var(--text); }
+        .icon-btn { background: none; border: none; color: var(--accent); font-size: 18px; cursor: pointer; padding: 4px; }
         
-        .content { flex: 1; overflow-y: auto; padding: 20px; padding-bottom: 40px; }
+        /* Контент */
+        .content { flex: 1; overflow-y: auto; padding: 16px; }
         .loader { text-align: center; margin-top: 50px; color: var(--accent); }
+        .error { color: var(--danger); text-align: center; background: rgba(244, 67, 54, 0.1); padding: 15px; border-radius: 10px; }
         
-        .day-block { margin-bottom: 24px; }
-        .day-title { font-size: 18px; color: var(--accent); margin-bottom: 15px; font-weight: bold; text-transform: uppercase; }
+        /* Карточки пар */
+        .day-block { margin-bottom: 20px; }
+        .day-title { font-size: 16px; color: var(--accent); margin-bottom: 10px; font-weight: bold; text-transform: uppercase; }
         .day-title.today { color: var(--success); }
         
-        .lesson-card { background: var(--surface); border-radius: 14px; padding: 16px; margin-bottom: 12px; display: flex; gap: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); border-left: 4px solid var(--accent); }
+        .lesson-card { background: var(--surface); border-radius: 12px; padding: 12px; margin-bottom: 10px; display: flex; gap: 12px; border-left: 4px solid var(--accent); align-items: center; }
         .lesson-card.today { border-left-color: var(--success); }
         
-        .lesson-time-block { display: flex; flex-direction: column; min-width: 60px; justify-content: center; }
-        .lesson-num { font-size: 20px; font-weight: 800; color: var(--accent); line-height: 1; }
-        .lesson-time { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+        .lesson-time-block { display: flex; flex-direction: column; min-width: 50px; justify-content: center; }
+        .lesson-num { font-size: 18px; font-weight: 800; color: var(--accent); line-height: 1; }
+        .lesson-time { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
         
-        .lesson-info { flex: 1; display: flex; flex-direction: column; justify-content: center; }
-        .lesson-subject { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
-        .lesson-meta { font-size: 13px; color: var(--text-muted); display: flex; flex-wrap: wrap; gap: 8px; }
+        .lesson-info { flex: 1; }
+        .lesson-subject { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
+        .lesson-meta { font-size: 12px; color: var(--text-muted); display: flex; flex-wrap: wrap; gap: 6px; }
         .room-badge { background: var(--bg); padding: 2px 6px; border-radius: 4px; color: var(--accent); font-weight: bold; font-size: 11px; }
         
-        .error { color: var(--danger); text-align: center; background: rgba(244, 67, 54, 0.1); padding: 15px; border-radius: 10px; }
-        .ios-hint { display: none; padding: 10px; text-align: center; font-size: 12px; color: var(--text-muted); background: var(--surface); }
+        /* Кнопки посещаемости */
+        .attendance-btn { background: none; border: none; font-size: 20px; cursor: pointer; padding: 4px; margin-left: 8px; }
         
-        .empty-msg { text-align: center; color: var(--text-muted); margin-top: 40px; font-size: 16px; }
+        /* Настройки */
+        .settings-group { background: var(--surface); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+        .settings-title { font-size: 16px; font-weight: bold; margin-bottom: 12px; }
+        .settings-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+        .settings-row:last-child { border-bottom: none; }
+        
+        /* Нижнее меню */
+        .bottom-nav { display: flex; background: var(--nav-bg); border-top: 1px solid var(--border); padding: 8px 0; justify-content: space-around; }
+        .nav-item { display: flex; flex-direction: column; align-items: center; color: var(--text-muted); font-size: 10px; cursor: pointer; gap: 2px; padding: 4px 12px; }
+        .nav-item.active { color: var(--accent); }
+        .nav-icon { font-size: 20px; }
+
+        /* Заголовок группы */
+        .group-selector { width: 100%; background: var(--surface); color: var(--accent); border: 1px solid var(--border); padding: 10px; border-radius: 8px; font-size: 14px; font-weight: 500; outline: none; }
+        
+        .ios-hint { display: none; padding: 10px; text-align: center; font-size: 11px; color: var(--text-muted); background: var(--surface); border-radius: 8px; margin: 10px; }
     </style>
 </head>
 <body>
+    <!-- Верхняя панель -->
     <div class="header">
         <div class="header-top">
-            <h1>Расписание</h1>
-            <div class="header-actions">
-                <button class="icon-btn" id="view-toggle" onclick="toggleView()">На неделю</button>
+            <h1 id="app-title">Расписание</h1>
+            <div>
+                <button class="icon-btn" onclick="toggleTheme()">🌓</button>
+                <button class="icon-btn" onclick="toggleView()" id="view-toggle">📅</button>
             </div>
         </div>
-        <select id="group-select" class="group-select" style="display:none;" onchange="changeGroup(this.value)">
-            <option value="">Загрузка групп...</option>
-        </select>
+        <select id="group-select" class="group-selector" style="display:none;" onchange="changeGroup(this.value)"></select>
     </div>
 
+    <!-- Основной контент -->
     <div class="content" id="content">
-        <div class="loader">Загрузка расписания...</div>
+        <div class="loader">Загрузка данных...</div>
     </div>
 
+    <!-- Нижнее меню -->
+    <div class="bottom-nav">
+        <div class="nav-item active" onclick="switchTab('schedule')" id="nav-schedule">
+            <span class="nav-icon">📚</span>
+            <span>Расписание</span>
+        </div>
+        <div class="nav-item" onclick="switchTab('attendance')" id="nav-attendance">
+            <span class="nav-icon">📊</span>
+            <span>Посещаемость</span>
+        </div>
+        <div class="nav-item" onclick="switchTab('settings')" id="nav-settings">
+            <span class="nav-icon">⚙️</span>
+            <span>Настройки</span>
+        </div>
+    </div>
+
+    <!-- Подсказка для iOS -->
     <div class="ios-hint" id="ios-hint">
         <b>Совет:</b> Нажмите «Поделиться» и выберите «На экран "Домой"», чтобы установить приложение.
     </div>
 
-    <!-- Подключаем логику -->
     <script src="app.js"></script>
 </body>
 </html>
