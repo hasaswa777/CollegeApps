@@ -31,7 +31,6 @@ function switchTab(tab) {
     document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
     document.getElementById(`nav-${tab}`).classList.add('active');
     
-    // Управляем видимостью элементов шапки
     const groupSelect = document.getElementById('group-select');
     const viewToggle = document.getElementById('view-toggle');
     
@@ -102,7 +101,7 @@ async function loadAllSchedules() {
             }
         }
         
-        switchTab('schedule'); // Открываем вкладку "Расписание"
+        switchTab('schedule');
 
     } catch (e) {
         console.error(e);
@@ -119,7 +118,6 @@ function parseAndAddFile(arrayBuffer) {
         rawData.forEach((row, rowIndex) => {
             row.forEach((cell, colIndex) => {
                 if (typeof cell === 'string' && cell.trim().length > 2) {
-                    // Более строгий поиск групп: 3 цифры + пробел + 2-4 буквы
                     if (/^\d{3}\s+[А-ЯЁA-Z]{2,4}/.test(cell.trim())) {
                         let groupName = cell.trim();
                         if (!groupsDatabase[groupName]) {
@@ -166,7 +164,7 @@ function populateGroupSelector() {
         optgroup.appendChild(opt);
     });
 
-    select.style.display = 'block'; // Показываем селектор
+    select.style.display = 'block';
     select.onchange = (e) => {
         selectedGroupIndex = parseInt(e.target.value);
         localStorage.setItem('selectedGroupName', groupsList[selectedGroupIndex].name);
@@ -200,7 +198,6 @@ function renderSchedule() {
         let displayDayName = days[todayIdx];
         let isToday = true;
         
-        // Если на сегодня пар нет, показываем завтрашние
         if (todayLessons.length === 0) {
             let tomorrowLessons = findLessons(data.rawData, data.rowIndex, data.colIndex, days[tomorrowIdx]);
             if (tomorrowLessons.length > 0) {
@@ -222,7 +219,6 @@ function renderSchedule() {
         content.appendChild(dayBlock);
 
     } else {
-        // Режим "Неделя"
         const daysOrder = ["ПОНЕДЕЛЬНИК", "ВТОРНИК", "СРЕДА", "ЧЕТВЕРГ", "ПЯТНИЦА", "СУББОТА"];
         const todayName = ["ВОСКРЕСЕНЬЕ", "ПОНЕДЕЛЬНИК", "ВТОРНИК", "СРЕДА", "ЧЕТВЕРГ", "ПЯТНИЦА", "СУББОТА"][new Date().getDay()];
         
@@ -248,7 +244,6 @@ function createLessonCard(l, isToday, idx) {
     const card = document.createElement('div');
     card.className = `lesson-card ${isToday ? 'today' : ''}`;
     
-    // Уникальный ID для отметки посещаемости
     const dateStr = getTodayString();
     const uniqueId = `${dateStr}_${l.subject}_${l.time}_${l.num}`;
     const record = attendanceData[uniqueId];
@@ -263,8 +258,8 @@ function createLessonCard(l, isToday, idx) {
     if (l.teacher) metaHtml += `<span>${l.teacher}</span>`;
     if (l.room) metaHtml += `<span class="room-badge">ауд. ${l.room}</span>`;
 
-    // Берем только начало времени для компактности
-    let displayTime = l.time.split('/')[0].trim();
+    // Показываем полное время, если есть вторая половина
+    let displayTime = l.time;
 
     card.innerHTML = `
         <div class="lesson-time-block">
@@ -296,7 +291,7 @@ function markAttendance(uniqueId) {
     else delete attendanceData[uniqueId];
     
     localStorage.setItem('attendance', JSON.stringify(attendanceData));
-    renderSchedule(); // Перерисовываем, чтобы обновить иконку
+    renderSchedule();
 }
 
 function renderAttendance() {
@@ -305,7 +300,6 @@ function renderAttendance() {
     
     const stats = {};
     for (const [key, status] of Object.entries(attendanceData)) {
-        // Ключ имеет вид: "dd.mm.yyyy_Предмет_Время_Номер"
         const parts = key.split('_');
         if (parts.length < 2) continue;
         const subject = parts[1];
@@ -367,26 +361,11 @@ function renderSettings() {
                 <span>Текущая группа</span>
                 <span style="color:var(--accent); font-weight:bold;">${groupsList[selectedGroupIndex]?.name || 'Не выбрана'}</span>
             </div>
-            <div style="font-size:12px; color:var(--text-muted); margin-top:8px;">
-                Чтобы сменить группу, вернитесь на вкладку «Расписание» и выберите нужную в выпадающем списке.
-            </div>
-        </div>
-        
-        <div class="settings-group">
-            <div class="settings-title">О приложении</div>
-            <div class="settings-row">
-                <span>Версия</span>
-                <span>Web 1.1</span>
-            </div>
-            <div class="settings-row">
-                <span>Разработчик</span>
-                <span>CollegeApp</span>
-            </div>
         </div>
     `;
 }
 
-// --- УЛУЧШЕННЫЙ ПАРСЕР EXCEL ---
+// --- ИСПРАВЛЕННЫЙ ПАРСЕР EXCEL (КАК В ANDROID) ---
 function findLessons(rawData, startRow, groupCol, targetDayName) {
     let lessons = [];
     let isCurrentDay = false;
@@ -398,67 +377,69 @@ function findLessons(rawData, startRow, groupCol, targetDayName) {
     for (let r = startRow; r < rawData.length; r++) {
         if (!rawData[r]) continue;
         
-        // Ищем название дня в первых 4 колонках
         let rowString = rawData[r].slice(0, 4).map(c => typeof c === 'string' ? c : '').join(" ").toUpperCase();
         let foundDay = daysArr.find(d => rowString.includes(d));
         
         if (foundDay) {
-            if (isCurrentDay) break; // Если мы уже прошли нужный день, останавливаемся
+            if (isCurrentDay) break;
             isCurrentDay = (foundDay === targetDayName);
             continue;
         }
 
         if (!isCurrentDay) continue;
 
+        // Ищем номер пары строго в первой колонке (индекс 0 или 1)
+        let lessonNum = "";
+        let cell0 = rawData[r][0] ? String(rawData[r][0]).trim() : "";
+        let cell1 = rawData[r][1] ? String(rawData[r][1]).trim() : "";
+        
+        if (cell0.match(/^\d{1,2}$/)) lessonNum = cell0;
+        else if (cell1.match(/^\d{1,2}$/)) lessonNum = cell1;
+
         // Ищем время пары
         let time1 = "";
-        let num1 = "";
         for(let c=1; c<5; c++) {
             let cell = rawData[r][c];
             if (typeof cell === 'string') {
                 let match = cell.match(timeRegex);
-                if (match) time1 = match[0];
-                // Ищем строго цифры от 1 до 99 (номер пары)
-                if (cell.match(/^\d{1,2}$/)) num1 = cell;
+                if (match) { time1 = match[0]; break; }
             }
         }
 
         if (time1) {
             let time2 = "";
-            let num2 = "";
             let nextRowIsDay = false;
             
-            // Проверяем следующую строку на наличие второй части пары
+            // Проверяем следующую строку (вторая половина пары)
             if (r + 1 < rawData.length) {
                 let nextRowStr = rawData[r + 1].slice(0, 4).map(c => typeof c === 'string' ? c : '').join(" ").toUpperCase();
                 nextRowIsDay = daysArr.some(d => nextRowStr.includes(d));
                 
                 if (!nextRowIsDay) {
-                    for(let c=1; c<5; c++) {
-                        let cell = rawData[r+1][c];
-                        if (typeof cell === 'string') {
-                            let match = cell.match(timeRegex);
-                            if (match) time2 = match[0];
-                            if (cell.match(/^\d{1,2}$/)) num2 = cell;
+                    let nextCell0 = rawData[r+1][0] ? String(rawData[r+1][0]).trim() : "";
+                    let nextCell1 = rawData[r+1][1] ? String(rawData[r+1][1]).trim() : "";
+                    let nextNum = "";
+                    if (nextCell0.match(/^\d{1,2}$/)) nextNum = nextCell0;
+                    else if (nextCell1.match(/^\d{1,2}$/)) nextNum = nextCell1;
+                    
+                    // Если в следующей строке НЕТ нового номера пары — это продолжение текущей
+                    if (!nextNum) {
+                        for(let c=1; c<5; c++) {
+                            let cell = rawData[r+1][c];
+                            if (typeof cell === 'string') {
+                                let match = cell.match(timeRegex);
+                                if (match) { time2 = match[0]; break; }
+                            }
                         }
                     }
                 }
             }
 
-            let isNextRowNewPair = num2 && num2.match(/^\d{1,2}$/) && num2 !== num1;
             let finalTimes = time1;
-            if (!isNextRowNewPair && time2 && time2 !== time1) finalTimes = time1 + " / " + time2;
+            if (time2 && time2 !== time1) finalTimes = time1 + " / " + time2;
 
-            let lessonNum = num1 || num2;
+            let rowsToScan = time2 ? [r, r+1] : [r];
             
-            // Если номер пары не найден, пытаемся взять его из первой колонки (индекс 0)
-            if (!lessonNum && rawData[r][0] && String(rawData[r][0]).match(/^\d{1,2}$/)) {
-                lessonNum = String(rawData[r][0]).trim();
-            }
-
-            let rowsToScan = isNextRowNewPair ? [r] : [r, r+1];
-            
-            // Собираем текст из ячеек группы и соседних колонок
             let texts = [];
             for (let row of rowsToScan) {
                 if (row >= rawData.length) continue;
@@ -471,8 +452,8 @@ function findLessons(rawData, startRow, groupCol, targetDayName) {
 
             for (let text of [...new Set(texts)]) {
                 if (teacherRegex.test(text)) { if (!teacher) teacher = text; }
-                else if (timeRegex.test(text)) { /* пропускаем время */ }
-                else if (text === lessonNum) { /* пропускаем номер пары */ }
+                else if (timeRegex.test(text)) { }
+                else if (text === lessonNum) { }
                 else if (text.match(/^[0-9]{1,4}[а-яА-Яa-zA-Z]?$/) || text.match(/^[0-9]{1,3}[\/\\\\][0-9]$/) || text.toLowerCase().includes("зал") || text.toLowerCase().includes("ауд") || text.toLowerCase().includes("спорт")) {
                     if (!room) room = text;
                 } else {
@@ -482,8 +463,7 @@ function findLessons(rawData, startRow, groupCol, targetDayName) {
 
             if (subject) lessons.push({ num: lessonNum, time: finalTimes, subject, teacher, room });
             
-            // Пропускаем следующую строку, если мы её уже прочитали как продолжение пары
-            if (!isNextRowNewPair && time2) r++; 
+            if (time2) r++; 
         }
     }
     return lessons;
