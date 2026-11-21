@@ -1048,6 +1048,77 @@ function findLessons(rawData, startRow, groupCol, targetDayName) {
     return lessons;
 }
 
+/* ============================================================
+   РЕКЛАМА ПРИ ОТКРЫТИИ (Яндекс РСЯ)
+   Показывается один раз при старте приложения.
+   ============================================================ */
+
+const OPEN_AD_BLOCK_ID = 'R-A-XXXXXX-Y'; // <-- ЗАМЕНИТЕ на ваш ID блока из РСЯ!
+const OPEN_AD_RENDER_ID = 'open-ad-render'; // ID контейнера внутри оверлея
+
+let openAdShown = false;      // защита от повторного показа за сессию
+let openAdRendered = false;   // защита от повторного рендера блока
+
+function initOpenAd() {
+    const overlay = document.getElementById('open-ad-overlay');
+    const closeBtn = document.getElementById('open-ad-close');
+    const container = document.getElementById('open-ad-container');
+    if (!overlay || !closeBtn || !container) return;
+
+    // Закрытие по кнопке
+    closeBtn.addEventListener('click', hideOpenAd);
+
+    // Рендер блока при первом показе
+    // Ждём, пока загрузится скрипт Яндекса (он async), затем рендерим
+    function renderAdBlock() {
+        if (openAdRendered) return;
+        openAdRendered = true;
+
+        // Создаём div с уникальным ID внутри контейнера
+        const adDiv = document.createElement('div');
+        adDiv.id = OPEN_AD_RENDER_ID;
+        container.appendChild(adDiv);
+
+        // Ставим в очередь рендер через yaContextCb
+        window.yaContextCb = window.yaContextCb || [];
+        window.yaContextCb.push(() => {
+            if (!window.Ya || !Ya.Context || !Ya.Context.AdvManager) {
+                console.warn('Яндекс.РСЯ: AdvManager не загрузился');
+                return;
+            }
+            Ya.Context.AdvManager.render({
+                blockId: OPEN_AD_BLOCK_ID,
+                renderTo: OPEN_AD_RENDER_ID,
+                onError: (err) => {
+                    console.warn('Яндекс.РСЯ: ошибка рендера', err);
+                    // Если реклама не загрузилась — просто не показываем оверлей
+                    hideOpenAd();
+                }
+            });
+        });
+    }
+
+    // Показываем оверлей через небольшую задержку, чтобы приложение успело отрисоваться
+    setTimeout(() => {
+        if (openAdShown) return;
+        openAdShown = true;
+        overlay.classList.add('show');
+        overlay.setAttribute('aria-hidden', 'false');
+        renderAdBlock();
+    }, 800); // 0.8 сек — приложение загрузится, потом покажем рекламу
+}
+
+function hideOpenAd() {
+    const overlay = document.getElementById('open-ad-overlay');
+    if (!overlay) return;
+    overlay.classList.remove('show');
+    overlay.setAttribute('aria-hidden', 'true');
+    // Полностью удаляем оверлей из DOM через 300 мс (после анимации)
+    setTimeout(() => {
+        if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+    }, 300);
+}
+
 /* ---------- Старт ---------- */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -1069,6 +1140,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     updateUpdatedLabel();
     refreshSchedules();
+
+    // ===== РЕКЛАМА ПРИ ОТКРЫТИИ =====
+    initOpenAd();
+    // ================================
 
     setInterval(tick, 60000);
     window.addEventListener('online', () => refreshSchedules());
