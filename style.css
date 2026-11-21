@@ -266,3 +266,68 @@ body {
 }
 .ios-hint.show { display: flex; }
 .ios-hint-close { background: none; border: none; color: var(--text-muted); font-size: 14px; cursor: pointer; padding: 4px; flex-shrink: 0; }
+/* ===== Реклама при открытии ===== */
+.open-ad-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: var(--overlay);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+.open-ad-overlay.show {
+    display: flex;
+    opacity: 1;
+}
+.open-ad-modal {
+    background: var(--surface);
+    border-radius: 24px;
+    padding: 20px;
+    width: 100%;
+    max-width: 420px;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+.open-ad-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    text-align: center;
+}
+.open-ad-container {
+    min-height: 100px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+    background: var(--surface-2);
+    border-radius: 14px;
+    padding: 8px;
+}
+.open-ad-container iframe {
+    max-width: 100%;
+}
+.open-ad-close {
+    background: var(--accent);
+    color: var(--on-accent);
+    border: none;
+    padding: 14px;
+    border-radius: 14px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 0.1s;
+}
+.open-ad-close:active {
+    transform: scale(0.97);
+}
