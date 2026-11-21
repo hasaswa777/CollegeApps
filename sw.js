@@ -1,6 +1,6 @@
-/* Расписание НПК — Service Worker v6 */
+/* Расписание НПК — Service Worker v7 (с поддержкой рекламы Яндекса) */
 
-const CACHE = 'college-cache-v6';
+const CACHE = 'college-cache-v7';
 const PRECACHE = [
     './',
     './index.html',
@@ -10,6 +10,18 @@ const PRECACHE = [
     './icon-192.png',
     './icon-512.png',
     'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js'
+];
+
+// Домены, которые НЕ кэшируем (реклама Яндекса и всё, что с ней связано)
+const NO_CACHE_HOSTS = [
+    'yandex.ru',
+    'yastatic.net',
+    'adsystem.yandex.ru',
+    'an.yandex.ru',
+    'mc.yandex.ru',
+    'matchid.adfox.yandex.ru',
+    'sync.bumlam.com',
+    'ads.adfox.ru'
 ];
 
 self.addEventListener('install', e => {
@@ -39,6 +51,17 @@ async function fromCache(cache, request) {
 self.addEventListener('fetch', e => {
     const req = e.request;
     if (req.method !== 'GET' || !req.url.startsWith('http')) return;
+
+    // === ПРОПУСКАЕМ РЕКЛАМУ ЯНДЕКСА (не кэшируем, не перехватываем) ===
+    try {
+        const url = new URL(req.url);
+        const host = url.hostname;
+        if (NO_CACHE_HOSTS.some(h => host === h || host.endsWith('.' + h))) {
+            return; // браузер загрузит напрямую
+        }
+    } catch (err) { /* ignore */ }
+    // ================================================================
+
     e.respondWith((async () => {
         const cache = await caches.open(CACHE);
         try {
