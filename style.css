@@ -1,4 +1,4 @@
-/* Расписание НПК — style.css v4.1 */
+/* Расписание НПК — style.css v5.0 */
 
 :root {
     --bg: #1C1B1F; --surface: #2A2A2E; --surface-2: #35353A; --text: #E6E1E5;
@@ -28,12 +28,11 @@ body {
     overflow: hidden;
 }
 
-/* Скроллбары в палитре приложения */
-.content, .groups-row, .modal { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
-.content::-webkit-scrollbar, .groups-row::-webkit-scrollbar, .modal::-webkit-scrollbar { width: 8px; height: 8px; }
-.content::-webkit-scrollbar-track, .groups-row::-webkit-scrollbar-track, .modal::-webkit-scrollbar-track { background: transparent; }
-.content::-webkit-scrollbar-thumb, .groups-row::-webkit-scrollbar-thumb, .modal::-webkit-scrollbar-thumb { background: var(--border); border-radius: 8px; }
-.content::-webkit-scrollbar-thumb:hover, .groups-row::-webkit-scrollbar-thumb:hover, .modal::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+.content, .groups-row, .weeks-row, .modal { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+.content::-webkit-scrollbar, .groups-row::-webkit-scrollbar, .weeks-row::-webkit-scrollbar, .modal::-webkit-scrollbar { width: 8px; height: 8px; }
+.content::-webkit-scrollbar-track, .groups-row::-webkit-scrollbar-track, .weeks-row::-webkit-scrollbar-track, .modal::-webkit-scrollbar-track { background: transparent; }
+.content::-webkit-scrollbar-thumb, .groups-row::-webkit-scrollbar-thumb, .weeks-row::-webkit-scrollbar-thumb, .modal::-webkit-scrollbar-thumb { background: var(--border); border-radius: 8px; }
+.content::-webkit-scrollbar-thumb:hover, .groups-row::-webkit-scrollbar-thumb:hover, .weeks-row::-webkit-scrollbar-thumb:hover, .modal::-webkit-scrollbar-thumb:hover { background: var(--accent); }
 
 /* Шапка */
 .header {
@@ -73,6 +72,35 @@ body {
 .banner.error { background: rgba(244, 67, 54, 0.12); color: var(--danger); }
 .banner .btn { flex-shrink: 0; }
 .banner-retry { white-space: nowrap; }
+
+/* Недели */
+.weeks-row {
+    position: relative; display: flex; gap: 8px; overflow-x: auto;
+    padding: 2px 2px 10px; margin-bottom: 12px;
+    scroll-snap-type: x proximity;
+}
+.week-chip {
+    flex-shrink: 0; scroll-snap-align: center;
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    padding: 10px 16px; border-radius: 14px; cursor: pointer; white-space: nowrap;
+    transition: background .15s, border-color .15s, transform .1s, opacity .15s;
+}
+.week-chip:active { transform: scale(.97); }
+.week-chip.active { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.week-chip.past { opacity: .55; }
+.week-chip.past.active { opacity: 1; }
+.week-range { font-size: 13px; font-weight: 700; }
+.week-badge {
+    font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .4px;
+    background: var(--success); color: #fff; padding: 2px 7px; border-radius: 999px;
+}
+.week-chip.active .week-badge { background: var(--on-accent); color: var(--accent); }
+.week-note {
+    font-size: 12px; color: var(--warning); background: rgba(255,193,7,.1);
+    border: 1px solid rgba(255,193,7,.25); border-radius: 10px;
+    padding: 8px 12px; margin: -4px 0 12px;
+}
 
 /* Чипы курсов */
 .chips-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
@@ -117,7 +145,7 @@ body {
 .day-title.today { color: var(--success); }
 .day-date { color: var(--text-muted); font-weight: 600; font-size: 12px; }
 
-/* Карточка пары: колонки выровнены по верхнему краю */
+/* Карточка пары */
 .lesson-card {
     background: var(--surface); border-radius: 14px; padding: 14px 16px; margin-bottom: 10px;
     display: flex; gap: 14px; border-left: 4px solid var(--accent); align-items: flex-start;
@@ -266,7 +294,3 @@ body {
 }
 .ios-hint.show { display: flex; }
 .ios-hint-close { background: none; border: none; color: var(--text-muted); font-size: 14px; cursor: pointer; padding: 4px; flex-shrink: 0; }
-;
-    flex-direction: column;
-    gap: 14px;
-}
