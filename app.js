@@ -1,4 +1,4 @@
-/* Расписание НПК — app.js v5.0 (недели из файлов, корректные даты) */
+/* Расписание НПК — app.js v1.2 (недели из файлов, корректные даты) */
 
 const SITE_URL = 'https://politech-nsk.ru/index.php/studentam';
 const BASE_URL = 'https://politech-nsk.ru';
