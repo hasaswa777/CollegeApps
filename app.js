@@ -3,7 +3,7 @@
 const SITE_URL = 'https://politech-nsk.ru/index.php/studentam';
 const BASE_URL = 'https://politech-nsk.ru';
 const PROXY = 'https://schedule-proxy.ivanushca99.workers.dev/?url=';
-const APP_VERSION = '5.0';
+const APP_VERSION = '1.2';
 const DAY_MS = 86400000;
 
 const DAYS = ['ВОСКРЕСЕНЬЕ', 'ПОНЕДЕЛЬНИК', 'ВТОРНИК', 'СРЕДА', 'ЧЕТВЕРГ', 'ПЯТНИЦА', 'СУББОТА'];
